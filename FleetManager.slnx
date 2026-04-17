@@ -1,4 +1,0 @@
-<Solution>
-  <Project Path="FleetManager.Api.Tests/FleetManager.Api.Tests.csproj" />
-  <Project Path="FleetManager.Api/FleetManager.Api.csproj" />
-</Solution>
