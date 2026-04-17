@@ -78,29 +78,32 @@ public class TransportOrderQueue
 
 public class FleetController
 {
-    private readonly VehicleRegistry      _registry;
-    private readonly TransportOrderQueue  _queue;
-    private readonly TopologyMap          _topology;
-    private readonly IVda5050MqttService  _mqtt;
-    private readonly IFleetStatusPublisher _statusPublisher;
+    private readonly VehicleRegistry          _registry;
+    private readonly TransportOrderQueue      _queue;
+    private readonly TopologyMap              _topology;
+    private readonly IVda5050MqttService      _mqtt;
+    private readonly IFleetStatusPublisher    _statusPublisher;
+    private readonly IFleetPersistenceService _persistence;
     private readonly ILogger<FleetController> _log;
 
     private static readonly string DefaultMapId = "WAREHOUSE-FLOOR-1";
 
     public FleetController(
-        VehicleRegistry      registry,
-        TransportOrderQueue  queue,
-        TopologyMap          topology,
-        IVda5050MqttService  mqtt,
-        IFleetStatusPublisher? statusPublisher,
+        VehicleRegistry          registry,
+        TransportOrderQueue      queue,
+        TopologyMap              topology,
+        IVda5050MqttService      mqtt,
+        IFleetStatusPublisher?   statusPublisher,
+        IFleetPersistenceService? persistence,
         ILogger<FleetController> log)
     {
-        _registry = registry;
-        _queue    = queue;
-        _topology = topology;
-        _mqtt     = mqtt;
+        _registry        = registry;
+        _queue           = queue;
+        _topology        = topology;
+        _mqtt            = mqtt;
         _statusPublisher = statusPublisher ?? NoOpFleetStatusPublisher.Instance;
-        _log      = log;
+        _persistence     = persistence    ?? NoOpFleetPersistenceService.Instance;
+        _log             = log;
 
         // Wire up MQTT events
         _mqtt.OnStateReceived      += HandleVehicleStateAsync;
@@ -109,7 +112,7 @@ public class FleetController
 
     // ── Inbound: WMS/MFR requests a transport ────────────────────────────────
 
-    public Task RequestTransportAsync(string sourceStationId, string destStationId,
+    public async Task RequestTransportAsync(string sourceStationId, string destStationId,
         string? loadId = null, CancellationToken ct = default)
     {
         var order = new TransportOrder(
@@ -120,7 +123,8 @@ public class FleetController
         );
 
         _queue.Enqueue(order);
-        return DispatchAndPublishStatusAsync(ct);
+        await _persistence.SaveOrderAsync(order, ct);
+        await DispatchAndPublishStatusAsync(ct);
     }
 
     private async Task DispatchAndPublishStatusAsync(CancellationToken ct = default)
@@ -214,6 +218,7 @@ public class FleetController
 
         await _mqtt.PublishOrderAsync(vdaOrder, ct);
         transportOrder.Start();
+        await _persistence.SaveOrderAsync(transportOrder, ct);
     }
 
     // ── Inbound: Vehicle state update ────────────────────────────────────────
@@ -240,8 +245,11 @@ public class FleetController
                 && !state.Driving)
             {
                 _queue.Complete(state.OrderId);
+                await _persistence.CompleteOrderAsync(activeOrder);
             }
         }
+
+        await _persistence.SaveVehicleAsync(vehicle);
 
         // Vehicle just became idle → try to assign next pending order
         if (!wasIdle && vehicle.IsAvailable)
@@ -252,7 +260,7 @@ public class FleetController
 
     // ── Inbound: Vehicle connection event ────────────────────────────────────
 
-    private Task HandleConnectionAsync(ConnectionMessage msg)
+    private async Task HandleConnectionAsync(ConnectionMessage msg)
     {
         var vehicle = _registry.GetOrCreate(msg.Manufacturer, msg.SerialNumber);
         vehicle.ApplyConnection(msg);
@@ -260,7 +268,8 @@ public class FleetController
         _log.LogInformation("Vehicle {Id} connection: {State}",
             vehicle.VehicleId, msg.ConnectionState);
 
-        return PublishStatusAsync();
+        await _persistence.SaveVehicleAsync(vehicle);
+        await PublishStatusAsync();
     }
 
     // ── Control: Send instant action (e.g. emergency stop) ───────────────────

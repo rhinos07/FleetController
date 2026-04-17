@@ -28,6 +28,7 @@ public class FleetControllerTests
         var controller = new FleetController(
             registry, queue, topology, mqtt,
             statusPublisher,
+            persistence: null,
             NullLogger<FleetController>.Instance);
 
         return new Fixture(controller, registry, queue, mqtt, statusPublisher);
