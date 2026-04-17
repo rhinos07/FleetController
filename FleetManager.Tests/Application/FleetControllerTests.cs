@@ -13,7 +13,8 @@ public class FleetControllerTests
         FleetController    Controller,
         VehicleRegistry    Registry,
         TransportOrderQueue Queue,
-        FakeMqttService    Mqtt);
+        FakeMqttService    Mqtt,
+        FakeFleetStatusPublisher StatusPublisher);
 
     private static Fixture CreateFixture()
     {
@@ -23,11 +24,13 @@ public class FleetControllerTests
         topology.AddNode("SRC", 0.0,  0.0, 0.0, "MAP-1");
         topology.AddNode("DST", 10.0, 0.0, 0.0, "MAP-1");
         var mqtt       = new FakeMqttService();
+        var statusPublisher = new FakeFleetStatusPublisher();
         var controller = new FleetController(
             registry, queue, topology, mqtt,
+            statusPublisher,
             NullLogger<FleetController>.Instance);
 
-        return new Fixture(controller, registry, queue, mqtt);
+        return new Fixture(controller, registry, queue, mqtt, statusPublisher);
     }
 
     private static void MakeVehicleAvailable(VehicleRegistry registry,
@@ -160,6 +163,17 @@ public class FleetControllerTests
         Assert.Equal("SN-001", published.SerialNumber);
     }
 
+    [Fact]
+    public async Task RequestTransportAsync_PublishesFleetStatusUpdate()
+    {
+        var f = CreateFixture();
+
+        await f.Controller.RequestTransportAsync("SRC", "DST");
+
+        var status = Assert.Single(f.StatusPublisher.PublishedStatuses);
+        Assert.Equal(1, status.PendingOrders);
+    }
+
     // ── Instant actions ───────────────────────────────────────────────────────
 
     [Fact]
@@ -267,6 +281,19 @@ public class FleetControllerTests
         Assert.Single(f.Mqtt.PublishedOrders);
     }
 
+    [Fact]
+    public async Task SimulatedState_PublishesFleetStatusUpdate_WithVehicleData()
+    {
+        var f = CreateFixture();
+
+        await f.Mqtt.SimulateStateAsync(StateFor("Acme", "SN-001"));
+
+        var status = Assert.Single(f.StatusPublisher.PublishedStatuses);
+        var vehicle = Assert.Single(status.Vehicles);
+        Assert.Equal("Acme/SN-001", vehicle.VehicleId);
+        Assert.Equal("Idle", vehicle.Status);
+    }
+
     // ── Event handling: connection ────────────────────────────────────────────
 
     [Fact]
@@ -298,5 +325,22 @@ public class FleetControllerTests
 
         var vehicle = f.Registry.Find("Acme/SN-001");
         Assert.Equal(VehicleStatus.Offline, vehicle?.Status);
+    }
+
+    [Fact]
+    public async Task SimulatedConnection_PublishesFleetStatusUpdate()
+    {
+        var f = CreateFixture();
+
+        await f.Mqtt.SimulateConnectionAsync(new ConnectionMessage
+        {
+            Manufacturer    = "Acme",
+            SerialNumber    = "SN-001",
+            ConnectionState = "ONLINE"
+        });
+
+        var status = Assert.Single(f.StatusPublisher.PublishedStatuses);
+        Assert.Single(status.Vehicles);
+        Assert.Equal("Acme/SN-001", status.Vehicles[0].VehicleId);
     }
 }

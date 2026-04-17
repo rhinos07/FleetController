@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Vda5050FleetController.Application;
 using Vda5050FleetController.Domain.Models;
 using Vda5050FleetController.Infrastructure.Mqtt;
+using Vda5050FleetController.Realtime;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,6 +17,7 @@ builder.Services.Configure<MqttOptions>(builder.Configuration.GetSection("Mqtt")
 builder.Services.AddSingleton<VehicleRegistry>();
 builder.Services.AddSingleton<TransportOrderQueue>();
 builder.Services.AddSingleton<FleetController>();
+builder.Services.AddSingleton<IFleetStatusPublisher, SignalRFleetStatusPublisher>();
 builder.Services.AddSingleton<TopologyMap>(sp =>
 {
     // Demo topology — in production: load from DB or config file
@@ -41,6 +43,7 @@ builder.Services.AddHostedService<MqttBackgroundService>();
 // ── Web API ───────────────────────────────────────────────────────────────────
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddSignalR();
 
 var app = builder.Build();
 
@@ -49,6 +52,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 // ── Endpoints ─────────────────────────────────────────────────────────────────
 
@@ -93,6 +99,8 @@ app.MapPost("/fleet/vehicles/{vehicleId}/charge",
         return Results.Ok();
     })
     .WithName("StartCharging");
+
+app.MapHub<FleetStatusHub>("/hubs/fleet-status");
 
 app.Run();
 
