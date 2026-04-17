@@ -32,6 +32,18 @@ public class OrderServiceTests
         Assert.Null(outcome.Order);
     }
 
+    [Fact]
+    public async Task CreateOrderAsync_Accepts_Concurrent_Orders()
+    {
+        var graph = new RouteGraphService();
+        var service = new OrderService(graph, new NoOpDashboardNotifier());
+
+        var outcomes = await Task.WhenAll(Enumerable.Range(1, 20)
+            .Select(index => service.CreateOrderAsync(new($"HU-{index:000}", "INBOUND", "OUTBOUND"))));
+
+        Assert.All(outcomes, outcome => Assert.Equal(TransportOrderStatus.Accepted, outcome.Status));
+    }
+
     private sealed class NoOpDashboardNotifier : IDashboardNotifier
     {
         public Task OrderUpdatedAsync(TransportOrderOutcome orderOutcome) => Task.CompletedTask;

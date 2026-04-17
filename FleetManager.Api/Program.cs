@@ -16,7 +16,7 @@ builder.Services.AddSingleton<IDashboardNotifier, SignalRDashboardNotifier>();
 
 builder.Services.AddScoped(_ =>
     new FleetDb(builder.Configuration.GetConnectionString("FleetManager")
-                ?? "Host=localhost;Port=5432;Database=fleetmanager;Username=fleet;Password=fleet"));
+                ?? throw new InvalidOperationException("Connection string 'FleetManager' is required.")));
 
 var app = builder.Build();
 

@@ -1,15 +1,24 @@
 class FleetDashboard extends HTMLElement {
     connectedCallback() {
-        this.innerHTML = `
-            <section>
-                <h1>Fleet Manager Dashboard</h1>
-                <div id="status">Connecting to SignalR...</div>
-                <h2>Events</h2>
-                <pre id="events"></pre>
-            </section>`;
+        const section = document.createElement('section');
+        const heading = document.createElement('h1');
+        heading.textContent = 'Fleet Manager Dashboard';
+        section.appendChild(heading);
 
-        this.statusElement = this.querySelector('#status');
-        this.eventsElement = this.querySelector('#events');
+        this.statusElement = document.createElement('div');
+        this.statusElement.id = 'status';
+        this.statusElement.textContent = 'Connecting to SignalR...';
+        section.appendChild(this.statusElement);
+
+        const eventsHeading = document.createElement('h2');
+        eventsHeading.textContent = 'Events';
+        section.appendChild(eventsHeading);
+
+        this.eventsElement = document.createElement('pre');
+        this.eventsElement.id = 'events';
+        section.appendChild(this.eventsElement);
+
+        this.replaceChildren(section);
         this.connect();
     }
 
