@@ -15,7 +15,8 @@ public class SignalRFleetStatusPublisher(
         }
         catch (Exception ex)
         {
-            log.LogWarning(ex, "Failed to publish live fleet status update");
+            log.LogWarning(ex,
+                "Failed to publish live fleet status update to SignalR clients. Dashboard may show stale data.");
         }
     }
 }

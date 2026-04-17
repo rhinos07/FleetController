@@ -281,6 +281,19 @@ public class FleetControllerTests
         Assert.Single(f.Mqtt.PublishedOrders);
     }
 
+    [Fact]
+    public async Task SimulatedState_PublishesFleetStatusUpdate_WithVehicleData()
+    {
+        var f = CreateFixture();
+
+        await f.Mqtt.SimulateStateAsync(StateFor("Acme", "SN-001"));
+
+        var status = Assert.Single(f.StatusPublisher.PublishedStatuses);
+        var vehicle = Assert.Single(status.Vehicles);
+        Assert.Equal("Acme/SN-001", vehicle.VehicleId);
+        Assert.Equal("Idle", vehicle.Status);
+    }
+
     // ── Event handling: connection ────────────────────────────────────────────
 
     [Fact]
