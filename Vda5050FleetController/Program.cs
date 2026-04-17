@@ -1,3 +1,6 @@
+using LinqToDB;
+using LinqToDB.AspNet;
+using LinqToDB.AspNet.Logging;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -6,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Vda5050FleetController.Application;
 using Vda5050FleetController.Domain.Models;
 using Vda5050FleetController.Infrastructure.Mqtt;
+using Vda5050FleetController.Infrastructure.Persistence;
 using Vda5050FleetController.Realtime;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -36,6 +40,24 @@ builder.Services.AddSingleton<TopologyMap>(sp =>
 
 // ── Infrastructure ────────────────────────────────────────────────────────────
 builder.Services.AddSingleton<IVda5050MqttService, Vda5050MqttService>();
+
+// ── Persistence (PostgreSQL + linq2db) ────────────────────────────────────────
+var connectionString = builder.Configuration.GetConnectionString("Fleet");
+if (!string.IsNullOrWhiteSpace(connectionString))
+{
+    builder.Services.AddLinqToDBContext<FleetDbContext>((provider, options) =>
+        options
+            .UsePostgreSQL(connectionString)
+            .UseDefaultLogging(provider));
+
+    builder.Services.AddScoped<IFleetRepository, PostgresFleetRepository>();
+    builder.Services.AddSingleton<IFleetPersistenceService, PostgresFleetPersistenceService>();
+    builder.Services.AddHostedService<SchemaInitializer>();
+}
+else
+{
+    builder.Services.AddSingleton<IFleetPersistenceService>(_ => NoOpFleetPersistenceService.Instance);
+}
 
 // ── Hosted service: connect MQTT on startup ───────────────────────────────────
 builder.Services.AddHostedService<MqttBackgroundService>();
@@ -101,6 +123,20 @@ app.MapPost("/fleet/vehicles/{vehicleId}/charge",
     .WithName("StartCharging");
 
 app.MapHub<FleetStatusHub>("/hubs/fleet-status");
+
+// GET /fleet/orders — active and pending orders
+app.MapGet("/fleet/orders",
+    async (IFleetPersistenceService persistence, CancellationToken ct) =>
+        Results.Ok(await persistence.GetActiveOrdersAsync(ct)))
+    .WithName("GetActiveOrders")
+    .WithSummary("Get all active and pending orders from the database");
+
+// GET /fleet/orders/history — completed / failed order history
+app.MapGet("/fleet/orders/history",
+    async (IFleetPersistenceService persistence, int limit = 100, CancellationToken ct = default) =>
+        Results.Ok(await persistence.GetOrderHistoryAsync(limit, ct)))
+    .WithName("GetOrderHistory")
+    .WithSummary("Get completed and failed order history from the database");
 
 app.Run();
 
