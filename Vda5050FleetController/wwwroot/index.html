@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FleetManager Live-Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 1.5rem; background: #f7f7f7; color: #1f2937; }
+    h1 { margin-top: 0; }
+    .cards { display: flex; gap: 1rem; margin-bottom: 1rem; }
+    .card { background: white; border-radius: 8px; padding: 0.9rem 1rem; min-width: 180px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; }
+    th, td { text-align: left; padding: 0.7rem; border-bottom: 1px solid #e5e7eb; font-size: 0.95rem; }
+    th { background: #f3f4f6; }
+    .muted { color: #6b7280; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>FleetManager Live-Dashboard</h1>
+  <div class="cards">
+    <div class="card">Fahrzeuge: <strong id="vehicleCount">0</strong></div>
+    <div class="card">Aktive Aufträge: <strong id="activeOrders">0</strong></div>
+    <div class="card">Wartende Aufträge: <strong id="pendingOrders">0</strong></div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Fahrzeug</th>
+        <th>Status</th>
+        <th>Batterie (%)</th>
+        <th>Order</th>
+        <th>Position</th>
+        <th>Last Seen (UTC)</th>
+      </tr>
+    </thead>
+    <tbody id="vehicleRows">
+      <tr><td colspan="6" class="muted">Warte auf Live-Daten …</td></tr>
+    </tbody>
+  </table>
+  <p class="muted" id="connectionState">Verbinde mit Live-Stream …</p>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+  <script>
+    const vehicleCountEl = document.getElementById("vehicleCount");
+    const activeOrdersEl = document.getElementById("activeOrders");
+    const pendingOrdersEl = document.getElementById("pendingOrders");
+    const vehicleRowsEl = document.getElementById("vehicleRows");
+    const connectionStateEl = document.getElementById("connectionState");
+
+    function render(status) {
+      vehicleCountEl.textContent = status.vehicles.length;
+      activeOrdersEl.textContent = status.activeOrders;
+      pendingOrdersEl.textContent = status.pendingOrders;
+
+      if (status.vehicles.length === 0) {
+        vehicleRowsEl.innerHTML = '<tr><td colspan="6" class="muted">Keine Fahrzeuge gemeldet</td></tr>';
+        return;
+      }
+
+      vehicleRowsEl.innerHTML = status.vehicles.map(v => `
+        <tr>
+          <td>${v.vehicleId ?? "-"}</td>
+          <td>${v.status ?? "-"}</td>
+          <td>${v.battery ?? "-"}</td>
+          <td>${v.orderId ?? "-"}</td>
+          <td>${v.position ? `${v.position.x.toFixed(2)}, ${v.position.y.toFixed(2)} (${v.position.mapId ?? "-"})` : "-"}</td>
+          <td>${v.lastSeen ? new Date(v.lastSeen).toISOString() : "-"}</td>
+        </tr>
+      `).join("");
+    }
+
+    async function start() {
+      if (typeof signalR === "undefined") {
+        connectionStateEl.textContent = "SignalR-Client konnte nicht geladen werden";
+        return;
+      }
+
+      const connection = new signalR.HubConnectionBuilder()
+        .withUrl("/hubs/fleet-status")
+        .withAutomaticReconnect()
+        .build();
+
+      connection.on("fleetStatusUpdated", render);
+
+      connection.onreconnecting(() => {
+        connectionStateEl.textContent = "Verbindung unterbrochen, versuche erneut …";
+      });
+      connection.onreconnected(() => {
+        connectionStateEl.textContent = "Verbunden (SignalR)";
+      });
+      connection.onclose(() => {
+        connectionStateEl.textContent = "Verbindung geschlossen";
+      });
+
+      await connection.start();
+      connectionStateEl.textContent = "Verbunden (SignalR)";
+    }
+
+    start().catch(err => {
+      connectionStateEl.textContent = `SignalR-Fehler: ${err}`;
+    });
+  </script>
+</body>
+</html>

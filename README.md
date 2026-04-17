@@ -18,11 +18,14 @@ Vda5050FleetController/
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `GET` | `/` | Live dashboard (SignalR) |
 | `GET` | `/fleet/status` | Current fleet status (all vehicles and order queue) |
 | `POST` | `/fleet/orders` | Submit a transport order (from WMS/MFR) |
 | `POST` | `/fleet/vehicles/{vehicleId}/pause` | Pause a vehicle (`stopPause` instant action) |
 | `POST` | `/fleet/vehicles/{vehicleId}/resume` | Resume a vehicle (`startPause` instant action) |
 | `POST` | `/fleet/vehicles/{vehicleId}/charge` | Initiate charging (`startCharging` instant action) |
+
+**SignalR Hub:** `/hubs/fleet-status` with event `fleetStatusUpdated`
 
 **Swagger UI** is available at `/swagger` in development mode.
 

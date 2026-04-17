@@ -82,6 +82,7 @@ public class FleetController
     private readonly TransportOrderQueue  _queue;
     private readonly TopologyMap          _topology;
     private readonly IVda5050MqttService  _mqtt;
+    private readonly IFleetStatusPublisher _statusPublisher;
     private readonly ILogger<FleetController> _log;
 
     private static readonly string DefaultMapId = "WAREHOUSE-FLOOR-1";
@@ -91,12 +92,14 @@ public class FleetController
         TransportOrderQueue  queue,
         TopologyMap          topology,
         IVda5050MqttService  mqtt,
+        IFleetStatusPublisher? statusPublisher,
         ILogger<FleetController> log)
     {
         _registry = registry;
         _queue    = queue;
         _topology = topology;
         _mqtt     = mqtt;
+        _statusPublisher = statusPublisher ?? NoOpFleetStatusPublisher.Instance;
         _log      = log;
 
         // Wire up MQTT events
@@ -117,7 +120,13 @@ public class FleetController
         );
 
         _queue.Enqueue(order);
-        return TryDispatchAsync(ct);
+        return UpdateStatusAfterDispatchAsync(ct);
+    }
+
+    private async Task UpdateStatusAfterDispatchAsync(CancellationToken ct = default)
+    {
+        await TryDispatchAsync(ct);
+        await PublishStatusAsync(ct);
     }
 
     // ── Dispatch: find idle vehicle and send VDA5050 order ───────────────────
@@ -231,6 +240,8 @@ public class FleetController
         // Vehicle just became idle → try to assign next pending order
         if (!wasIdle && vehicle.IsAvailable)
             await TryDispatchAsync();
+
+        await PublishStatusAsync();
     }
 
     // ── Inbound: Vehicle connection event ────────────────────────────────────
@@ -243,7 +254,7 @@ public class FleetController
         _log.LogInformation("Vehicle {Id} connection: {State}",
             vehicle.VehicleId, msg.ConnectionState);
 
-        return Task.CompletedTask;
+        return PublishStatusAsync();
     }
 
     // ── Control: Send instant action (e.g. emergency stop) ───────────────────
@@ -298,6 +309,9 @@ public class FleetController
         PendingOrders = _queue.PendingCount,
         ActiveOrders  = _queue.ActiveCount
     };
+
+    private Task PublishStatusAsync(CancellationToken ct = default)
+        => _statusPublisher.PublishAsync(GetStatus(), ct);
 }
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
