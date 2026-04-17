@@ -1,5 +1,26 @@
 services:
 
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: fleet-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-fleet_manager}
+      - POSTGRES_USER=${POSTGRES_USER:-fleet}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fleet}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fleet} -d ${POSTGRES_DB:-fleet_manager}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fleet-net
+
   # ── MQTT Broker ──────────────────────────────────────────────────────────────
   mosquitto:
     image: eclipse-mosquitto:2.0
@@ -38,8 +59,12 @@ services:
       - Mqtt__ClientId=${MQTT_CLIENT_ID:-fleet-controller-01}
       - Mqtt__InterfaceName=${MQTT_INTERFACE_NAME:-uagv}
       - Mqtt__MajorVersion=${MQTT_MAJOR_VERSION:-v2}
+      # PostgreSQL-Verbindung überschreibt appsettings.json
+      - ConnectionStrings__Fleet=Host=postgres;Port=5432;Database=${POSTGRES_DB:-fleet_manager};Username=${POSTGRES_USER:-fleet};Password=${POSTGRES_PASSWORD:-fleet}
     depends_on:
       mosquitto:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - fleet-net
@@ -72,6 +97,7 @@ services:
       - fleet-net
 
 volumes:
+  postgres-data:
   mosquitto-data:
   mosquitto-logs:
   mqtt-explorer-config:
