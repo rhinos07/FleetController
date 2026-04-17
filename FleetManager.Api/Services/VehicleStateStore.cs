@@ -1,10 +1,11 @@
 using FleetManager.Api.Models;
+using System.Collections.Concurrent;
 
 namespace FleetManager.Api.Services;
 
 public sealed class VehicleStateStore
 {
-    private readonly Dictionary<string, VehicleState> _states = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, VehicleState> _states = new(StringComparer.OrdinalIgnoreCase);
 
     public VehicleState Upsert(string vehicleId, string currentNode, string state, DateTimeOffset lastMessageAtUtc)
     {
@@ -13,5 +14,5 @@ public sealed class VehicleStateStore
         return snapshot;
     }
 
-    public IReadOnlyCollection<VehicleState> GetAll() => _states.Values;
+    public IReadOnlyCollection<VehicleState> GetAll() => _states.Values.ToArray();
 }

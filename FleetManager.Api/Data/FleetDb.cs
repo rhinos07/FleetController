@@ -1,13 +1,12 @@
 using LinqToDB;
 using LinqToDB.Data;
-using LinqToDB.DataProvider.PostgreSQL;
 using LinqToDB.DataProvider;
 using LinqToDB.Mapping;
 
 namespace FleetManager.Api.Data;
 
 public sealed class FleetDb(string connectionString) : DataConnection(
-    new DataOptions().UseConnectionString(PostgreSQLTools.GetDataProvider(PostgreSQLVersion.v95), connectionString))
+    new DataOptions().UseConnectionString(ProviderName.PostgreSQL, connectionString))
 {
     public ITable<VehicleEntity> Vehicles => this.GetTable<VehicleEntity>();
     public ITable<TransportOrderEntity> TransportOrders => this.GetTable<TransportOrderEntity>();

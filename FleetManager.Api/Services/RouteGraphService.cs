@@ -1,4 +1,5 @@
 using FleetManager.Api.Models;
+using System.Collections.Concurrent;
 
 namespace FleetManager.Api.Services;
 
@@ -6,7 +7,7 @@ public sealed class RouteGraphService
 {
     private readonly Dictionary<string, RouteNode> _nodes;
     private readonly List<RouteEdge> _edges;
-    private readonly HashSet<string> _blockedZones = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, byte> _blockedZones = new(StringComparer.OrdinalIgnoreCase);
 
     public RouteGraphService()
     {
@@ -28,22 +29,22 @@ public sealed class RouteGraphService
 
     public IReadOnlyCollection<RouteNode> Nodes => _nodes.Values;
     public IReadOnlyCollection<RouteEdge> Edges => _edges;
-    public IReadOnlyCollection<string> BlockedZones => _blockedZones;
+    public IReadOnlyCollection<string> BlockedZones => _blockedZones.Keys.ToArray();
 
     public bool HasNode(string nodeId) => _nodes.ContainsKey(nodeId);
 
     public bool IsZoneBlockedByNode(string nodeId)
-        => _nodes.TryGetValue(nodeId, out var node) && _blockedZones.Contains(node.ZoneId);
+        => _nodes.TryGetValue(nodeId, out var node) && _blockedZones.ContainsKey(node.ZoneId);
 
     public void SetZoneBlocked(string zoneId, bool blocked)
     {
         if (blocked)
         {
-            _blockedZones.Add(zoneId);
+            _blockedZones.TryAdd(zoneId, 0);
             return;
         }
 
-        _blockedZones.Remove(zoneId);
+        _blockedZones.TryRemove(zoneId, out _);
     }
 
     public IReadOnlyList<string>? TryFindRoute(string sourceNodeId, string destinationNodeId)
