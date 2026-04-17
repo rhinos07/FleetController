@@ -104,6 +104,10 @@
         <span>Fahrzeug (Charging)</span>
       </div>
       <div class="legend-item">
+        <div class="legend-color" style="background: #ef4444;"></div>
+        <span>Fahrzeug (Error)</span>
+      </div>
+      <div class="legend-item">
         <div class="legend-color" style="background: #ef4444; border-radius: 50%;"></div>
         <span>Aktiver Auftrag</span>
       </div>
@@ -156,6 +160,14 @@
     
     // Order status constants (must match backend TransportStatus enum)
     const ACTIVE_ORDER_STATUSES = ["Pending", "Assigned", "InProgress"];
+    
+    // Vehicle status constants (must match backend VehicleStatus enum)
+    const VEHICLE_STATUS = {
+      DRIVING: "Driving",
+      BUSY: "Busy",
+      ERROR: "Error",
+      CHARGING: "Charging"
+    };
 
     // Helper functions
     function formatVehicleId(vehicleId) {
@@ -256,11 +268,11 @@
           if (vehicle.position) {
             // Choose color based on status
             let color = "#10b981"; // Idle - green
-            if (vehicle.status === "Driving" || vehicle.status === "Busy") {
+            if (vehicle.status === VEHICLE_STATUS.DRIVING || vehicle.status === VEHICLE_STATUS.BUSY) {
               color = "#f59e0b"; // orange
-            } else if (vehicle.status === "Error") {
+            } else if (vehicle.status === VEHICLE_STATUS.ERROR) {
               color = "#ef4444"; // red
-            } else if (vehicle.status === "Charging") {
+            } else if (vehicle.status === VEHICLE_STATUS.CHARGING) {
               color = "#8b5cf6"; // purple
             }
             

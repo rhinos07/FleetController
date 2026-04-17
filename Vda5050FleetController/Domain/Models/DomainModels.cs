@@ -119,9 +119,17 @@ public class TopologyMap
     public NodePosition? GetNode(string nodeId)
         => _nodes.GetValueOrDefault(nodeId);
 
+    /// <summary>
+    /// Gets all nodes in the topology map with their positions.
+    /// </summary>
+    /// <returns>A collection of tuples containing node IDs and their positions.</returns>
     public IEnumerable<(string NodeId, NodePosition Position)> GetAllNodes()
         => _nodes.Select(kvp => (kvp.Key, kvp.Value));
 
+    /// <summary>
+    /// Gets all edges in the topology map.
+    /// </summary>
+    /// <returns>A collection of tuples containing edge IDs and their start/end node IDs.</returns>
     public IEnumerable<(string EdgeId, string From, string To)> GetAllEdges()
         => _edges.Select(kvp => (kvp.Key, kvp.Value.From, kvp.Value.To));
 
