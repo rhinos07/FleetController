@@ -1,0 +1,81 @@
+services:
+
+  # ── MQTT Broker ──────────────────────────────────────────────────────────────
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: fleet-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"   # MQTT
+      - "9001:9001"   # WebSocket (optional)
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-logs:/mosquitto/log
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 -i healthcheck -W 3"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fleet-net
+
+  # ── FleetManager (ASP.NET Core 8) ────────────────────────────────────────────
+  fleet-controller:
+    build:
+      context: ..                 # Repo-Root (eine Ebene über diesem Ordner)
+      dockerfile: docker/Dockerfile
+    container_name: fleet-controller
+    restart: unless-stopped
+    ports:
+      - "${FLEET_HTTP_PORT:-8080}:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development}
+      - ASPNETCORE_URLS=http://+:8080
+      # MQTT-Einstellungen überschreiben appsettings.json via Env-Vars
+      - Mqtt__Host=${MQTT_HOST:-mosquitto}
+      - Mqtt__Port=${MQTT_PORT:-1883}
+      - Mqtt__ClientId=${MQTT_CLIENT_ID:-fleet-controller-01}
+      - Mqtt__InterfaceName=${MQTT_INTERFACE_NAME:-uagv}
+      - Mqtt__MajorVersion=${MQTT_MAJOR_VERSION:-v2}
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - fleet-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/fleet/status || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── MQTT Explorer (Web-UI zum Debuggen) ──────────────────────────────────────
+  # Aufruf: http://localhost:4000
+  # Kann mit "docker compose --profile tools up" gestartet werden
+  mqtt-explorer:
+    image: smeagolworms4/mqtt-explorer
+    container_name: fleet-mqtt-explorer
+    restart: unless-stopped
+    profiles:
+      - tools
+    ports:
+      - "4000:4000"
+    environment:
+      - HTTP_PORT=4000
+      - CONFIG_PATH=/mqtt-explorer/config
+    volumes:
+      - mqtt-explorer-config:/mqtt-explorer/config
+    depends_on:
+      - mosquitto
+    networks:
+      - fleet-net
+
+volumes:
+  mosquitto-data:
+  mosquitto-logs:
+  mqtt-explorer-config:
+
+networks:
+  fleet-net:
+    driver: bridge
