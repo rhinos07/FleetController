@@ -120,10 +120,10 @@ public class FleetController
         );
 
         _queue.Enqueue(order);
-        return UpdateStatusAfterDispatchAsync(ct);
+        return DispatchAndPublishStatusAsync(ct);
     }
 
-    private async Task UpdateStatusAfterDispatchAsync(CancellationToken ct = default)
+    private async Task DispatchAndPublishStatusAsync(CancellationToken ct = default)
     {
         await TryDispatchAsync(ct);
         await PublishStatusAsync(ct);
