@@ -70,6 +70,9 @@ public class TransportOrderQueue
         }
     }
 
+    /// <summary>
+    /// Gets all orders (both pending and active) for status reporting and visualization.
+    /// </summary>
     public IEnumerable<TransportOrder> GetAllOrders()
         => _pending.Concat(_active.Values);
 
