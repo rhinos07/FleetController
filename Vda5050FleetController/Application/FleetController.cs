@@ -125,8 +125,14 @@ public class FleetController
 
     private async Task DispatchAndPublishStatusAsync(CancellationToken ct = default)
     {
-        await TryDispatchAsync(ct);
-        await PublishStatusAsync(ct);
+        try
+        {
+            await TryDispatchAsync(ct);
+        }
+        finally
+        {
+            await PublishStatusAsync(ct);
+        }
     }
 
     // ── Dispatch: find idle vehicle and send VDA5050 order ───────────────────
