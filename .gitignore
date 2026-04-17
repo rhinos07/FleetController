@@ -1,4 +1,5 @@
 bin/
 obj/
 
-.envappsettings.Development.json
+.env
+appsettings.Development.json
