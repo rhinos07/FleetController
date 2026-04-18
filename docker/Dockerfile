@@ -2,6 +2,12 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
+# Install Node.js for frontend build
+RUN apt-get update && apt-get install -y curl && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy solution and project files first (layer caching)
 COPY Vda5050FleetController.sln ./
 COPY Vda5050FleetController/Vda5050FleetController.csproj ./Vda5050FleetController/
@@ -12,6 +18,12 @@ RUN dotnet restore
 # Copy the rest of the source
 COPY Vda5050FleetController/ ./Vda5050FleetController/
 COPY FleetManager.Tests/     ./FleetManager.Tests/
+
+# Build frontend (TypeScript/WebComponents)
+WORKDIR /src/Vda5050FleetController/wwwroot
+RUN npm install && npm run build
+
+WORKDIR /src
 
 # Run unit tests during build
 RUN dotnet test FleetManager.Tests/FleetManager.Tests.csproj \
