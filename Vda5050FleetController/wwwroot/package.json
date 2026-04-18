@@ -1,0 +1,21 @@
+{
+  "name": "fleet-manager-ui",
+  "version": "1.0.0",
+  "description": "FleetManager UI using WebComponents and TypeScript",
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:ts && npm run build:bundle",
+    "build:ts": "tsc",
+    "build:bundle": "esbuild src/main.ts --bundle --outfile=dist/bundle.js --sourcemap --target=es2020",
+    "watch": "npm run build:bundle -- --watch",
+    "dev": "npm run watch"
+  },
+  "devDependencies": {
+    "@microsoft/signalr": "^8.0.7",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@microsoft/signalr": "^8.0.7"
+  }
+}
