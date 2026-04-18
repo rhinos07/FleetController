@@ -7,12 +7,57 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 1.5rem; background: #f7f7f7; color: #1f2937; }
     h1 { margin-top: 0; }
+    h2 { margin-top: 1.5rem; margin-bottom: 0.5rem; font-size: 1.3rem; }
     .cards { display: flex; gap: 1rem; margin-bottom: 1rem; }
     .card { background: white; border-radius: 8px; padding: 0.9rem 1rem; min-width: 180px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
     table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; }
     th, td { text-align: left; padding: 0.7rem; border-bottom: 1px solid #e5e7eb; font-size: 0.95rem; }
     th { background: #f3f4f6; }
     .muted { color: #6b7280; margin-top: 0.5rem; }
+    
+    /* Graph visualization styles */
+    .graph-container { 
+      background: white; 
+      border-radius: 8px; 
+      padding: 1rem; 
+      margin-bottom: 1rem; 
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .graph-controls {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      align-items: center;
+    }
+    .graph-controls label {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      cursor: pointer;
+    }
+    #graphCanvas {
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      cursor: move;
+      display: block;
+    }
+    .legend {
+      display: flex;
+      gap: 1.5rem;
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .legend-color {
+      width: 16px;
+      height: 16px;
+      border-radius: 3px;
+      border: 1px solid #ccc;
+    }
   </style>
 </head>
 <body>
@@ -23,6 +68,53 @@
     <div class="card">Wartende Aufträge: <strong id="pendingOrders">0</strong></div>
   </div>
 
+  <!-- Graph Visualization -->
+  <div class="graph-container">
+    <h2>Topologie-Graph</h2>
+    <div class="graph-controls">
+      <label>
+        <input type="checkbox" id="showNodes" checked> Knoten anzeigen
+      </label>
+      <label>
+        <input type="checkbox" id="showEdges" checked> Kanten anzeigen
+      </label>
+      <label>
+        <input type="checkbox" id="showVehicles" checked> Fahrzeuge anzeigen
+      </label>
+      <label>
+        <input type="checkbox" id="showOrders" checked> Aufträge anzeigen
+      </label>
+    </div>
+    <canvas id="graphCanvas" width="900" height="500"></canvas>
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-color" style="background: #3b82f6;"></div>
+        <span>Knoten</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #10b981;"></div>
+        <span>Fahrzeug (Idle)</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #f59e0b;"></div>
+        <span>Fahrzeug (Busy/Driving)</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #8b5cf6;"></div>
+        <span>Fahrzeug (Charging)</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #ef4444;"></div>
+        <span>Fahrzeug (Error)</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #ef4444; border-radius: 50%;"></div>
+        <span>Aktiver Auftrag</span>
+      </div>
+    </div>
+  </div>
+
+  <h2>Fahrzeugtabelle</h2>
   <table>
     <thead>
       <tr>
@@ -47,28 +139,204 @@
     const pendingOrdersEl = document.getElementById("pendingOrders");
     const vehicleRowsEl = document.getElementById("vehicleRows");
     const connectionStateEl = document.getElementById("connectionState");
+    
+    // Graph elements
+    const canvas = document.getElementById("graphCanvas");
+    const ctx = canvas.getContext("2d");
+    const showNodesCheckbox = document.getElementById("showNodes");
+    const showEdgesCheckbox = document.getElementById("showEdges");
+    const showVehiclesCheckbox = document.getElementById("showVehicles");
+    const showOrdersCheckbox = document.getElementById("showOrders");
+    
+    let currentStatus = null;
+
+    // Graph rendering constants
+    const SCALE = 15; // pixels per meter
+    const OFFSET_X = 50;
+    const OFFSET_Y = 50;
+    const NODE_RADIUS = 8;
+    const VEHICLE_RADIUS = 12;
+    const ORDER_ID_DISPLAY_LENGTH = 8;
+    
+    // Order status constants (must match backend TransportStatus enum)
+    const ACTIVE_ORDER_STATUSES = ["Pending", "Assigned", "InProgress"];
+    
+    // Vehicle status constants (must match backend VehicleStatus enum)
+    const VEHICLE_STATUS = {
+      DRIVING: "Driving",
+      BUSY: "Busy",
+      ERROR: "Error",
+      CHARGING: "Charging"
+    };
+
+    // Helper functions
+    function formatVehicleId(vehicleId) {
+      if (!vehicleId) return vehicleId;
+      const parts = vehicleId.split('/');
+      return parts.length > 1 ? parts[1] : vehicleId;
+    }
+
+    function toCanvasX(x) {
+      return x * SCALE + OFFSET_X;
+    }
+
+    function toCanvasY(y) {
+      // Flip Y axis (canvas Y increases downward, but coordinate system increases upward)
+      return canvas.height - (y * SCALE + OFFSET_Y);
+    }
+
+    function drawGraph(status) {
+      if (!status) return;
+      
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      const showNodes = showNodesCheckbox.checked;
+      const showEdges = showEdgesCheckbox.checked;
+      const showVehicles = showVehiclesCheckbox.checked;
+      const showOrders = showOrdersCheckbox.checked;
+
+      // Create node lookup for edge drawing
+      const nodeMap = {};
+      if (status.nodes) {
+        status.nodes.forEach(node => {
+          nodeMap[node.nodeId] = node;
+        });
+      }
+
+      // Draw edges first (so they appear behind nodes)
+      if (showEdges && status.edges) {
+        ctx.strokeStyle = "#9ca3af";
+        ctx.lineWidth = 2;
+        
+        status.edges.forEach(edge => {
+          const fromNode = nodeMap[edge.from];
+          const toNode = nodeMap[edge.to];
+          
+          if (fromNode && toNode) {
+            ctx.beginPath();
+            ctx.moveTo(toCanvasX(fromNode.x), toCanvasY(fromNode.y));
+            ctx.lineTo(toCanvasX(toNode.x), toCanvasY(toNode.y));
+            ctx.stroke();
+          }
+        });
+      }
+
+      // Draw nodes
+      if (showNodes && status.nodes) {
+        status.nodes.forEach(node => {
+          ctx.fillStyle = "#3b82f6";
+          ctx.beginPath();
+          ctx.arc(toCanvasX(node.x), toCanvasY(node.y), NODE_RADIUS, 0, 2 * Math.PI);
+          ctx.fill();
+          
+          // Draw node label
+          ctx.fillStyle = "#1f2937";
+          ctx.font = "10px Arial";
+          ctx.textAlign = "center";
+          ctx.fillText(node.nodeId, toCanvasX(node.x), toCanvasY(node.y) - NODE_RADIUS - 3);
+        });
+      }
+
+      // Draw active orders on source nodes
+      if (showOrders && status.orders) {
+        status.orders.forEach(order => {
+          if (ACTIVE_ORDER_STATUSES.includes(order.status)) {
+            const sourceNode = nodeMap[order.sourceId];
+            if (sourceNode) {
+              // Draw red indicator near source node
+              ctx.fillStyle = "#ef4444";
+              ctx.beginPath();
+              ctx.arc(toCanvasX(sourceNode.x) + 12, toCanvasY(sourceNode.y) - 12, 6, 0, 2 * Math.PI);
+              ctx.fill();
+              
+              // Draw order ID
+              ctx.fillStyle = "#ef4444";
+              ctx.font = "9px Arial";
+              ctx.textAlign = "left";
+              const displayOrderId = order.orderId.length > ORDER_ID_DISPLAY_LENGTH 
+                ? order.orderId.substring(0, ORDER_ID_DISPLAY_LENGTH) 
+                : order.orderId;
+              ctx.fillText(displayOrderId, toCanvasX(sourceNode.x) + 20, toCanvasY(sourceNode.y) - 10);
+            }
+          }
+        });
+      }
+
+      // Draw vehicles
+      if (showVehicles && status.vehicles) {
+        status.vehicles.forEach(vehicle => {
+          if (vehicle.position) {
+            // Choose color based on status
+            let color = "#10b981"; // Idle - green
+            if (vehicle.status === VEHICLE_STATUS.DRIVING || vehicle.status === VEHICLE_STATUS.BUSY) {
+              color = "#f59e0b"; // orange
+            } else if (vehicle.status === VEHICLE_STATUS.ERROR) {
+              color = "#ef4444"; // red
+            } else if (vehicle.status === VEHICLE_STATUS.CHARGING) {
+              color = "#8b5cf6"; // purple
+            }
+            
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(
+              toCanvasX(vehicle.position.x), 
+              toCanvasY(vehicle.position.y), 
+              VEHICLE_RADIUS, 
+              0, 
+              2 * Math.PI
+            );
+            ctx.fill();
+            
+            // Draw vehicle outline
+            ctx.strokeStyle = "#1f2937";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Draw vehicle label
+            ctx.fillStyle = "#1f2937";
+            ctx.font = "bold 11px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText(
+              formatVehicleId(vehicle.vehicleId), 
+              toCanvasX(vehicle.position.x), 
+              toCanvasY(vehicle.position.y) + VEHICLE_RADIUS + 12
+            );
+          }
+        });
+      }
+    }
 
     function render(status) {
+      currentStatus = status;
+      
       vehicleCountEl.textContent = status.vehicles.length;
       activeOrdersEl.textContent = status.activeOrders;
       pendingOrdersEl.textContent = status.pendingOrders;
 
       if (status.vehicles.length === 0) {
         vehicleRowsEl.innerHTML = '<tr><td colspan="6" class="muted">Keine Fahrzeuge gemeldet</td></tr>';
-        return;
+      } else {
+        vehicleRowsEl.innerHTML = status.vehicles.map(v => `
+          <tr>
+            <td>${v.vehicleId ?? "-"}</td>
+            <td>${v.status ?? "-"}</td>
+            <td>${v.battery ?? "-"}</td>
+            <td>${v.orderId ?? "-"}</td>
+            <td>${v.position ? `${v.position.x.toFixed(2)}, ${v.position.y.toFixed(2)} (${v.position.mapId ?? "-"})` : "-"}</td>
+            <td>${v.lastSeen ? new Date(v.lastSeen).toISOString() : "-"}</td>
+          </tr>
+        `).join("");
       }
-
-      vehicleRowsEl.innerHTML = status.vehicles.map(v => `
-        <tr>
-          <td>${v.vehicleId ?? "-"}</td>
-          <td>${v.status ?? "-"}</td>
-          <td>${v.battery ?? "-"}</td>
-          <td>${v.orderId ?? "-"}</td>
-          <td>${v.position ? `${v.position.x.toFixed(2)}, ${v.position.y.toFixed(2)} (${v.position.mapId ?? "-"})` : "-"}</td>
-          <td>${v.lastSeen ? new Date(v.lastSeen).toISOString() : "-"}</td>
-        </tr>
-      `).join("");
+      
+      // Draw the graph
+      drawGraph(status);
     }
+
+    // Add event listeners for checkboxes
+    showNodesCheckbox.addEventListener("change", () => drawGraph(currentStatus));
+    showEdgesCheckbox.addEventListener("change", () => drawGraph(currentStatus));
+    showVehiclesCheckbox.addEventListener("change", () => drawGraph(currentStatus));
+    showOrdersCheckbox.addEventListener("change", () => drawGraph(currentStatus));
 
     async function start() {
       if (typeof signalR === "undefined") {
