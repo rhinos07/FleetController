@@ -70,6 +70,12 @@ public class TransportOrderQueue
         }
     }
 
+    /// <summary>
+    /// Gets all orders (both pending and active) for status reporting and visualization.
+    /// </summary>
+    public IEnumerable<TransportOrder> GetAllOrders()
+        => _pending.Concat(_active.Values);
+
     public int PendingCount => _pending.Count;
     public int ActiveCount  => _active.Count;
 }
@@ -322,7 +328,28 @@ public class FleetController
             LastSeen   = v.LastSeen
         }).ToList(),
         PendingOrders = _queue.PendingCount,
-        ActiveOrders  = _queue.ActiveCount
+        ActiveOrders  = _queue.ActiveCount,
+        Nodes = _topology.GetAllNodes().Select(n => new TopologyNode
+        {
+            NodeId = n.NodeId,
+            X      = n.Position.X,
+            Y      = n.Position.Y,
+            MapId  = n.Position.MapId
+        }).ToList(),
+        Edges = _topology.GetAllEdges().Select(e => new TopologyEdge
+        {
+            EdgeId = e.EdgeId,
+            From   = e.From,
+            To     = e.To
+        }).ToList(),
+        Orders = _queue.GetAllOrders().Select(o => new OrderSummary
+        {
+            OrderId   = o.OrderId,
+            SourceId  = o.SourceId,
+            DestId    = o.DestId,
+            Status    = o.Status.ToString(),
+            VehicleId = o.AssignedVehicleId
+        }).ToList()
     };
 
     private Task PublishStatusAsync(CancellationToken ct = default)
@@ -336,6 +363,9 @@ public record FleetStatus
     public List<VehicleSummary> Vehicles      { get; init; } = [];
     public int                  PendingOrders { get; init; }
     public int                  ActiveOrders  { get; init; }
+    public List<TopologyNode>   Nodes         { get; init; } = [];
+    public List<TopologyEdge>   Edges         { get; init; } = [];
+    public List<OrderSummary>   Orders        { get; init; } = [];
 }
 
 public record VehicleSummary
@@ -346,4 +376,28 @@ public record VehicleSummary
     public double?      Battery   { get; init; }
     public string?      OrderId   { get; init; }
     public DateTime     LastSeen  { get; init; }
+}
+
+public record TopologyNode
+{
+    public string NodeId { get; init; } = string.Empty;
+    public double X      { get; init; }
+    public double Y      { get; init; }
+    public string MapId  { get; init; } = string.Empty;
+}
+
+public record TopologyEdge
+{
+    public string EdgeId { get; init; } = string.Empty;
+    public string From   { get; init; } = string.Empty;
+    public string To     { get; init; } = string.Empty;
+}
+
+public record OrderSummary
+{
+    public string OrderId   { get; init; } = string.Empty;
+    public string SourceId  { get; init; } = string.Empty;
+    public string DestId    { get; init; } = string.Empty;
+    public string Status    { get; init; } = string.Empty;
+    public string? VehicleId { get; init; }
 }
