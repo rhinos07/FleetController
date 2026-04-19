@@ -22,6 +22,7 @@ export interface TopologyNode {
   nodeId: string;
   x: number;
   y: number;
+  theta: number;
   mapId: string;
 }
 

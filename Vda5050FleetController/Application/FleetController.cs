@@ -334,6 +334,7 @@ public class FleetController
             NodeId = n.NodeId,
             X      = n.Position.X,
             Y      = n.Position.Y,
+            Theta  = n.Position.Theta,
             MapId  = n.Position.MapId
         }).ToList(),
         Edges = _topology.GetAllEdges().Select(e => new TopologyEdge
@@ -354,6 +355,9 @@ public class FleetController
 
     private Task PublishStatusAsync(CancellationToken ct = default)
         => _statusPublisher.PublishAsync(GetStatus(), ct);
+
+    public Task PublishStatusUpdateAsync(CancellationToken ct = default)
+        => PublishStatusAsync(ct);
 }
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
@@ -383,6 +387,7 @@ public record TopologyNode
     public string NodeId { get; init; } = string.Empty;
     public double X      { get; init; }
     public double Y      { get; init; }
+    public double Theta  { get; init; }
     public string MapId  { get; init; } = string.Empty;
 }
 
