@@ -145,7 +145,7 @@ export class FleetTopologyConfig extends HTMLElement {
             <td>${this.esc(n.nodeId)}</td>
             <td>${n.x.toFixed(2)}</td>
             <td>${n.y.toFixed(2)}</td>
-            <td>${n.theta.toFixed(4)}</td>
+            <td>${n.theta.toFixed(4)}</td><!-- 4 decimals: radians need more precision than meters -->
             <td>${this.esc(n.mapId)}</td>
             <td class="action-cell">
               <button class="btn-edit" data-action="editNode" data-id="${this.esc(n.nodeId)}">Edit</button>

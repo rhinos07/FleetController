@@ -251,12 +251,12 @@ public class TopologyStartupLoader : IHostedService
         var repo = scope.ServiceProvider.GetRequiredService<IFleetRepository>();
 
         var nodes = await repo.GetAllNodesAsync(ct);
-        foreach (var n in nodes)
-            _topology.AddNode(n.NodeId, n.X, n.Y, n.Theta, n.MapId);
+        foreach (var node in nodes)
+            _topology.AddNode(node.NodeId, node.X, node.Y, node.Theta, node.MapId);
 
         var edges = await repo.GetAllEdgesAsync(ct);
-        foreach (var e in edges)
-            _topology.AddEdge(e.EdgeId, e.FromNodeId, e.ToNodeId);
+        foreach (var edge in edges)
+            _topology.AddEdge(edge.EdgeId, edge.FromNodeId, edge.ToNodeId);
 
         _log.LogInformation("Topology loaded: {NodeCount} nodes, {EdgeCount} edges",
             nodes.Count, edges.Count);
