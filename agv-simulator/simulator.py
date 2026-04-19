@@ -99,13 +99,28 @@ def fetch_topology() -> tuple[dict, list]:
 
 def pick_start_nodes(nodes: dict, count: int) -> list[str]:
     """
-    Distributes AGV start positions across charging and IN stations.
+    Distributes AGV start positions across charging and IN stations, preferring
+    unique nodes so that vehicles do not block each other at startup.
     Falls back to any available node if none match those prefixes.
     """
     preferred = [nid for nid in nodes if nid.upper().startswith(("CHG", "IN-", "IN_"))]
     if not preferred:
         preferred = list(nodes.keys())
-    return [preferred[i % len(preferred)] for i in range(count)]
+    all_node_ids = list(nodes.keys())
+
+    result: list[str] = []
+    used: set[str] = set()
+    for _ in range(count):
+        # Prefer unique preferred nodes, then unique any node, then cycle preferred
+        candidates = (
+            [n for n in preferred if n not in used]
+            or [n for n in all_node_ids if n not in used]
+            or preferred
+        )
+        node = candidates[0]
+        used.add(node)
+        result.append(node)
+    return result
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -118,6 +133,20 @@ def _topic(serial: str, msg_type: str) -> str:
 
 def _is_charging_node(node_id: str) -> bool:
     return node_id.upper().startswith("CHG")
+
+
+# ── Node-occupation registry (shared across all simulators) ───────────────────
+
+_node_locks: dict[str, threading.Lock] = {}
+_node_locks_guard = threading.Lock()
+
+
+def _get_node_lock(node_id: str) -> threading.Lock:
+    """Returns (and lazily creates) the per-node mutex."""
+    with _node_locks_guard:
+        if node_id not in _node_locks:
+            _node_locks[node_id] = threading.Lock()
+        return _node_locks[node_id]
 
 
 # ── AGV state ─────────────────────────────────────────────────────────────────
@@ -212,6 +241,8 @@ class AgvSimulator:
         self._order_event = threading.Event()
         self._pending_order: Optional[dict] = None
         self._instant_actions: list = []
+        self._held_node: Optional[str] = None
+        self._acquire_node(start_node)
 
         self._client = mqtt.Client(
             client_id=f"agv-sim-{serial}",
@@ -269,6 +300,22 @@ class AgvSimulator:
             msg = self.state.to_state_msg()
         self._publish("state", msg)
 
+    # ── Node-occupation helpers ────────────────────────────────────────────────
+
+    def _acquire_node(self, node_id: str) -> None:
+        """Block until this vehicle exclusively holds node_id."""
+        lock = _get_node_lock(node_id)
+        if not lock.acquire(blocking=False):
+            print(f"[{self.state.serial}] Node {node_id} occupied — waiting …")
+            lock.acquire()
+        self._held_node = node_id
+
+    def _release_node(self, node_id: str) -> None:
+        """Give up exclusive hold on node_id."""
+        _get_node_lock(node_id).release()
+        if self._held_node == node_id:
+            self._held_node = None
+
     # ── Order simulation ───────────────────────────────────────────────────────
 
     def _simulate_order(self, order: dict):
@@ -310,6 +357,12 @@ class AgvSimulator:
             dy   = target_y - cur_y
             dist = math.sqrt(dx * dx + dy * dy)
 
+            # Acquire exclusive access to the target node before moving there.
+            # If another vehicle is already there, we block until it departs.
+            prev_held = self._held_node
+            if node_id != prev_held:
+                self._acquire_node(node_id)
+
             if dist > 0.05:
                 if i > 0 and i - 1 < len(edges):
                     gone_edge = edges[i - 1]["edgeId"]
@@ -318,6 +371,11 @@ class AgvSimulator:
                             e for e in self.state.edge_states if e["edgeId"] != gone_edge
                         ]
 
+            # Release the previous node as we depart from it
+            if prev_held is not None and prev_held != node_id:
+                self._release_node(prev_held)
+
+            if dist > 0.05:
                 self._drive(cur_x, cur_y, target_x, target_y, target_theta, dist)
 
             with self._lock:
