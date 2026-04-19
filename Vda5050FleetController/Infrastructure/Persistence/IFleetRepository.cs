@@ -14,4 +14,14 @@ public interface IFleetRepository
     // Order history
     Task AddOrderHistoryAsync(TransportOrder completedOrder, CancellationToken ct = default);
     Task<List<OrderHistoryRecord>> GetOrderHistoryAsync(int limit = 100, CancellationToken ct = default);
+
+    // Topology nodes
+    Task UpsertNodeAsync(NodeRecord node, CancellationToken ct = default);
+    Task DeleteNodeAsync(string nodeId, CancellationToken ct = default);
+    Task<List<NodeRecord>> GetAllNodesAsync(CancellationToken ct = default);
+
+    // Topology edges
+    Task UpsertEdgeAsync(EdgeRecord edge, CancellationToken ct = default);
+    Task DeleteEdgeAsync(string edgeId, CancellationToken ct = default);
+    Task<List<EdgeRecord>> GetAllEdgesAsync(CancellationToken ct = default);
 }

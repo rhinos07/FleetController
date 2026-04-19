@@ -22,21 +22,7 @@ builder.Services.AddSingleton<VehicleRegistry>();
 builder.Services.AddSingleton<TransportOrderQueue>();
 builder.Services.AddSingleton<FleetController>();
 builder.Services.AddSingleton<IFleetStatusPublisher, SignalRFleetStatusPublisher>();
-builder.Services.AddSingleton<TopologyMap>(sp =>
-{
-    // Demo topology — in production: load from DB or config file
-    var map = new TopologyMap();
-    map.AddNode("STATION-IN-01",  x:  5.0, y:  3.0, theta: 0.0,    mapId: "FLOOR-1");
-    map.AddNode("STATION-IN-02",  x:  5.0, y:  8.0, theta: 0.0,    mapId: "FLOOR-1");
-    map.AddNode("STATION-OUT-01", x: 40.0, y:  3.0, theta: 3.1415, mapId: "FLOOR-1");
-    map.AddNode("STATION-OUT-02", x: 40.0, y:  8.0, theta: 3.1415, mapId: "FLOOR-1");
-    map.AddNode("CHARGING-01",    x:  2.0, y:  2.0, theta: 0.0,    mapId: "FLOOR-1");
-    map.AddEdge("E-IN01-OUT01",   "STATION-IN-01",  "STATION-OUT-01");
-    map.AddEdge("E-IN01-OUT02",   "STATION-IN-01",  "STATION-OUT-02");
-    map.AddEdge("E-IN02-OUT01",   "STATION-IN-02",  "STATION-OUT-01");
-    map.AddEdge("E-IN02-OUT02",   "STATION-IN-02",  "STATION-OUT-02");
-    return map;
-});
+builder.Services.AddSingleton<TopologyMap>();
 
 // ── Infrastructure ────────────────────────────────────────────────────────────
 builder.Services.AddSingleton<IVda5050MqttService, Vda5050MqttService>();
@@ -53,6 +39,7 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     builder.Services.AddScoped<IFleetRepository, PostgresFleetRepository>();
     builder.Services.AddSingleton<IFleetPersistenceService, PostgresFleetPersistenceService>();
     builder.Services.AddHostedService<SchemaInitializer>();
+    builder.Services.AddHostedService<TopologyStartupLoader>();
 }
 else
 {
@@ -138,6 +125,74 @@ app.MapGet("/fleet/orders/history",
     .WithName("GetOrderHistory")
     .WithSummary("Get completed and failed order history from the database");
 
+// ── Topology Node Endpoints ───────────────────────────────────────────────────
+
+// GET /fleet/topology/nodes
+app.MapGet("/fleet/topology/nodes", (FleetController fc) =>
+    Results.Ok(fc.GetStatus().Nodes))
+    .WithName("GetTopologyNodes")
+    .WithSummary("Get all topology nodes");
+
+// POST /fleet/topology/nodes — add or update a node
+app.MapPost("/fleet/topology/nodes",
+    async (TopologyNode node, TopologyMap topology, IFleetPersistenceService persistence,
+           FleetController fc, CancellationToken ct) =>
+    {
+        topology.AddNode(node.NodeId, node.X, node.Y, node.Theta, node.MapId);
+        await persistence.SaveNodeAsync(node, ct);
+        await fc.PublishStatusUpdateAsync(ct);
+        return Results.Ok(node);
+    })
+    .WithName("UpsertTopologyNode")
+    .WithSummary("Add or update a topology node");
+
+// DELETE /fleet/topology/nodes/{nodeId}
+app.MapDelete("/fleet/topology/nodes/{nodeId}",
+    async (string nodeId, TopologyMap topology, IFleetPersistenceService persistence,
+           FleetController fc, CancellationToken ct) =>
+    {
+        topology.RemoveNode(nodeId);
+        await persistence.DeleteNodeAsync(nodeId, ct);
+        await fc.PublishStatusUpdateAsync(ct);
+        return Results.NoContent();
+    })
+    .WithName("DeleteTopologyNode")
+    .WithSummary("Remove a topology node");
+
+// ── Topology Edge Endpoints ───────────────────────────────────────────────────
+
+// GET /fleet/topology/edges
+app.MapGet("/fleet/topology/edges", (FleetController fc) =>
+    Results.Ok(fc.GetStatus().Edges))
+    .WithName("GetTopologyEdges")
+    .WithSummary("Get all topology edges");
+
+// POST /fleet/topology/edges — add or update an edge
+app.MapPost("/fleet/topology/edges",
+    async (TopologyEdge edge, TopologyMap topology, IFleetPersistenceService persistence,
+           FleetController fc, CancellationToken ct) =>
+    {
+        topology.AddEdge(edge.EdgeId, edge.From, edge.To);
+        await persistence.SaveEdgeAsync(edge, ct);
+        await fc.PublishStatusUpdateAsync(ct);
+        return Results.Ok(edge);
+    })
+    .WithName("UpsertTopologyEdge")
+    .WithSummary("Add or update a topology edge");
+
+// DELETE /fleet/topology/edges/{edgeId}
+app.MapDelete("/fleet/topology/edges/{edgeId}",
+    async (string edgeId, TopologyMap topology, IFleetPersistenceService persistence,
+           FleetController fc, CancellationToken ct) =>
+    {
+        topology.RemoveEdge(edgeId);
+        await persistence.DeleteEdgeAsync(edgeId, ct);
+        await fc.PublishStatusUpdateAsync(ct);
+        return Results.NoContent();
+    })
+    .WithName("DeleteTopologyEdge")
+    .WithSummary("Remove a topology edge");
+
 app.Run();
 
 // ── Request DTOs ──────────────────────────────────────────────────────────────
@@ -171,4 +226,41 @@ public class MqttBackgroundService : BackgroundService
         await _mqtt.DisconnectAsync(ct);
         await base.StopAsync(ct);
     }
+}
+
+// ── Startup: Load topology from DB ───────────────────────────────────────────
+public class TopologyStartupLoader : IHostedService
+{
+    private readonly IServiceScopeFactory             _scopeFactory;
+    private readonly TopologyMap                      _topology;
+    private readonly ILogger<TopologyStartupLoader>   _log;
+
+    public TopologyStartupLoader(IServiceScopeFactory scopeFactory,
+                                 TopologyMap topology,
+                                 ILogger<TopologyStartupLoader> log)
+    {
+        _scopeFactory = scopeFactory;
+        _topology     = topology;
+        _log          = log;
+    }
+
+    public async Task StartAsync(CancellationToken ct)
+    {
+        _log.LogInformation("Loading topology from database...");
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IFleetRepository>();
+
+        var nodes = await repo.GetAllNodesAsync(ct);
+        foreach (var n in nodes)
+            _topology.AddNode(n.NodeId, n.X, n.Y, n.Theta, n.MapId);
+
+        var edges = await repo.GetAllEdgesAsync(ct);
+        foreach (var e in edges)
+            _topology.AddEdge(e.EdgeId, e.FromNodeId, e.ToNodeId);
+
+        _log.LogInformation("Topology loaded: {NodeCount} nodes, {EdgeCount} edges",
+            nodes.Count, edges.Count);
+    }
+
+    public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
 }
