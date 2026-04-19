@@ -29,6 +29,10 @@ builder.Host.UseSerilog((ctx, _, cfg) =>
 // ── Configuration ─────────────────────────────────────────────────────────────
 builder.Services.Configure<MqttOptions>(builder.Configuration.GetSection("Mqtt"));
 
+if (builder.Environment.IsEnvironment("UITests"))
+    builder.Host.ConfigureHostOptions(
+        o => o.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore);
+
 // ── Domain / Application ──────────────────────────────────────────────────────
 builder.Services.AddSingleton<VehicleRegistry>();
 builder.Services.AddSingleton<TransportOrderQueue>();

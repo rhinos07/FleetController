@@ -12,3 +12,8 @@ dist/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Playwright test artifacts
+FleetManager.UITests/node_modules/
+FleetManager.UITests/playwright-report/
+FleetManager.UITests/test-results/
