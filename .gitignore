@@ -8,3 +8,7 @@ appsettings.Development.json
 node_modules/
 dist/
 *.log
+
+# Python bytecode
+__pycache__/
+*.pyc
