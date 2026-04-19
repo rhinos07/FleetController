@@ -9,6 +9,7 @@ import "./components/fleet-stats-cards";
 import "./components/fleet-connection-status";
 import "./components/fleet-vehicle-table";
 import "./components/fleet-topology-graph";
+import "./components/fleet-topology-config";
 import "./components/fleet-dashboard-app";
 
 // The components are now registered and ready to use

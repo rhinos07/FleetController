@@ -67,6 +67,22 @@ public class SchemaInitializer : IHostedService
                 completed_at         TIMESTAMPTZ NOT NULL
             );", ct);
 
+        await db.ExecuteAsync(@"
+            CREATE TABLE IF NOT EXISTS topology_nodes (
+                node_id  TEXT             NOT NULL PRIMARY KEY,
+                x        DOUBLE PRECISION NOT NULL,
+                y        DOUBLE PRECISION NOT NULL,
+                theta    DOUBLE PRECISION NOT NULL DEFAULT 0,
+                map_id   TEXT             NOT NULL
+            );", ct);
+
+        await db.ExecuteAsync(@"
+            CREATE TABLE IF NOT EXISTS topology_edges (
+                edge_id      TEXT NOT NULL PRIMARY KEY,
+                from_node_id TEXT NOT NULL,
+                to_node_id   TEXT NOT NULL
+            );", ct);
+
         _log.LogInformation("Fleet database schema ready.");
     }
 

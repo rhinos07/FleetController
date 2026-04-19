@@ -113,8 +113,14 @@ public class TopologyMap
     public void AddNode(string nodeId, double x, double y, double theta, string mapId)
         => _nodes[nodeId] = new NodePosition { X = x, Y = y, Theta = theta, MapId = mapId };
 
+    public bool RemoveNode(string nodeId)
+        => _nodes.Remove(nodeId);
+
     public void AddEdge(string edgeId, string fromNodeId, string toNodeId)
         => _edges[edgeId] = (fromNodeId, toNodeId);
+
+    public bool RemoveEdge(string edgeId)
+        => _edges.Remove(edgeId);
 
     public NodePosition? GetNode(string nodeId)
         => _nodes.GetValueOrDefault(nodeId);

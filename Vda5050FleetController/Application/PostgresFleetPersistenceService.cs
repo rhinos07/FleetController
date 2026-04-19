@@ -86,4 +86,88 @@ public class PostgresFleetPersistenceService : IFleetPersistenceService
         var repo = scope.ServiceProvider.GetRequiredService<IFleetRepository>();
         return await repo.GetActiveOrdersAsync(ct);
     }
+
+    // ── Topology ──────────────────────────────────────────────────────────────
+
+    public async Task SaveNodeAsync(TopologyNode node, CancellationToken ct = default)
+    {
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IFleetRepository>();
+            await repo.UpsertNodeAsync(new NodeRecord
+            {
+                NodeId = node.NodeId,
+                X      = node.X,
+                Y      = node.Y,
+                Theta  = node.Theta,
+                MapId  = node.MapId
+            }, ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to persist node {NodeId}", node.NodeId);
+        }
+    }
+
+    public async Task DeleteNodeAsync(string nodeId, CancellationToken ct = default)
+    {
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IFleetRepository>();
+            await repo.DeleteNodeAsync(nodeId, ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to delete node {NodeId}", nodeId);
+        }
+    }
+
+    public async Task<List<NodeRecord>> GetAllNodesAsync(CancellationToken ct = default)
+    {
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IFleetRepository>();
+        return await repo.GetAllNodesAsync(ct);
+    }
+
+    public async Task SaveEdgeAsync(TopologyEdge edge, CancellationToken ct = default)
+    {
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IFleetRepository>();
+            await repo.UpsertEdgeAsync(new EdgeRecord
+            {
+                EdgeId     = edge.EdgeId,
+                FromNodeId = edge.From,
+                ToNodeId   = edge.To
+            }, ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to persist edge {EdgeId}", edge.EdgeId);
+        }
+    }
+
+    public async Task DeleteEdgeAsync(string edgeId, CancellationToken ct = default)
+    {
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IFleetRepository>();
+            await repo.DeleteEdgeAsync(edgeId, ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to delete edge {EdgeId}", edgeId);
+        }
+    }
+
+    public async Task<List<EdgeRecord>> GetAllEdgesAsync(CancellationToken ct = default)
+    {
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IFleetRepository>();
+        return await repo.GetAllEdgesAsync(ct);
+    }
 }

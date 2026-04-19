@@ -154,4 +154,88 @@ public class TopologyMapTests
         Assert.Throws<InvalidOperationException>(
             () => map.BuildPath("SRC", "MISSING", [], []));
     }
+
+    // ── RemoveNode ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void RemoveNode_ReturnsTrueAndRemovesNode_WhenFound()
+    {
+        var map    = BuildMap();
+        var result = map.RemoveNode("SRC");
+
+        Assert.True(result);
+        Assert.Null(map.GetNode("SRC"));
+    }
+
+    [Fact]
+    public void RemoveNode_ReturnsFalse_WhenNotFound()
+    {
+        var map    = BuildMap();
+        var result = map.RemoveNode("DOES-NOT-EXIST");
+
+        Assert.False(result);
+    }
+
+    // ── RemoveEdge ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void RemoveEdge_ReturnsTrueAndRemovesEdge_WhenFound()
+    {
+        var map = BuildMap();
+        map.AddEdge("E1", "SRC", "DST");
+
+        var result = map.RemoveEdge("E1");
+
+        Assert.True(result);
+        Assert.Empty(map.GetAllEdges());
+    }
+
+    [Fact]
+    public void RemoveEdge_ReturnsFalse_WhenNotFound()
+    {
+        var map    = BuildMap();
+        var result = map.RemoveEdge("DOES-NOT-EXIST");
+
+        Assert.False(result);
+    }
+
+    // ── GetAllNodes / GetAllEdges ─────────────────────────────────────────────
+
+    [Fact]
+    public void GetAllNodes_ReturnsAllAddedNodes()
+    {
+        var map   = BuildMap();
+        var nodes = map.GetAllNodes().ToList();
+
+        Assert.Equal(2, nodes.Count);
+        Assert.Contains(nodes, n => n.NodeId == "SRC");
+        Assert.Contains(nodes, n => n.NodeId == "DST");
+    }
+
+    [Fact]
+    public void GetAllEdges_ReturnsAllAddedEdges()
+    {
+        var map = BuildMap();
+        map.AddEdge("E1", "SRC", "DST");
+        map.AddEdge("E2", "DST", "SRC");
+
+        var edges = map.GetAllEdges().ToList();
+
+        Assert.Equal(2, edges.Count);
+        Assert.Contains(edges, e => e.EdgeId == "E1");
+        Assert.Contains(edges, e => e.EdgeId == "E2");
+    }
+
+    [Fact]
+    public void AddNode_OverwritesExistingNode_WhenSameIdUsed()
+    {
+        var map = BuildMap();
+        map.AddNode("SRC", 99.0, 88.0, 1.0, "MAP-2");
+
+        var node = map.GetNode("SRC");
+        Assert.NotNull(node);
+        Assert.Equal(99.0, node.X);
+        Assert.Equal(88.0, node.Y);
+        Assert.Equal("MAP-2", node.MapId);
+    }
 }

@@ -82,4 +82,30 @@ public class PostgresFleetRepository : IFleetRepository
               .OrderByDescending(h => h.CompletedAt)
               .Take(limit)
               .ToListAsync(token: ct);
+
+    // ── Topology nodes ────────────────────────────────────────────────────────
+
+    public Task UpsertNodeAsync(NodeRecord node, CancellationToken ct = default)
+        => _db.InsertOrReplaceAsync(node, token: ct);
+
+    public async Task DeleteNodeAsync(string nodeId, CancellationToken ct = default)
+        => await _db.TopologyNodes
+                    .Where(n => n.NodeId == nodeId)
+                    .DeleteAsync(token: ct);
+
+    public Task<List<NodeRecord>> GetAllNodesAsync(CancellationToken ct = default)
+        => _db.TopologyNodes.ToListAsync(token: ct);
+
+    // ── Topology edges ────────────────────────────────────────────────────────
+
+    public Task UpsertEdgeAsync(EdgeRecord edge, CancellationToken ct = default)
+        => _db.InsertOrReplaceAsync(edge, token: ct);
+
+    public async Task DeleteEdgeAsync(string edgeId, CancellationToken ct = default)
+        => await _db.TopologyEdges
+                    .Where(e => e.EdgeId == edgeId)
+                    .DeleteAsync(token: ct);
+
+    public Task<List<EdgeRecord>> GetAllEdgesAsync(CancellationToken ct = default)
+        => _db.TopologyEdges.ToListAsync(token: ct);
 }

@@ -50,3 +50,25 @@ public class OrderHistoryRecord
     [Column("created_at"),                       NotNull]  public DateTime CreatedAt         { get; set; }
     [Column("completed_at"),                     NotNull]  public DateTime CompletedAt       { get; set; }
 }
+
+// ── Topology node ─────────────────────────────────────────────────────────────
+
+[Table("topology_nodes")]
+public class NodeRecord
+{
+    [Column("node_id"), PrimaryKey, NotNull] public string NodeId { get; set; } = string.Empty;
+    [Column("x"),                   NotNull] public double X      { get; set; }
+    [Column("y"),                   NotNull] public double Y      { get; set; }
+    [Column("theta"),               NotNull] public double Theta  { get; set; }
+    [Column("map_id"),              NotNull] public string MapId  { get; set; } = string.Empty;
+}
+
+// ── Topology edge ─────────────────────────────────────────────────────────────
+
+[Table("topology_edges")]
+public class EdgeRecord
+{
+    [Column("edge_id"),      PrimaryKey, NotNull] public string EdgeId     { get; set; } = string.Empty;
+    [Column("from_node_id"),             NotNull] public string FromNodeId { get; set; } = string.Empty;
+    [Column("to_node_id"),               NotNull] public string ToNodeId   { get; set; } = string.Empty;
+}

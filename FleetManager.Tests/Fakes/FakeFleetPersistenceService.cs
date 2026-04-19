@@ -37,4 +37,14 @@ public sealed class FakeFleetPersistenceService : IFleetPersistenceService
 
     public Task<List<OrderRecord>> GetActiveOrdersAsync(CancellationToken ct = default)
         => Task.FromResult(new List<OrderRecord>());
+
+    public Task SaveNodeAsync(TopologyNode node, CancellationToken ct = default)    => Task.CompletedTask;
+    public Task DeleteNodeAsync(string nodeId, CancellationToken ct = default)       => Task.CompletedTask;
+    public Task<List<NodeRecord>> GetAllNodesAsync(CancellationToken ct = default)
+        => Task.FromResult(new List<NodeRecord>());
+
+    public Task SaveEdgeAsync(TopologyEdge edge, CancellationToken ct = default)    => Task.CompletedTask;
+    public Task DeleteEdgeAsync(string edgeId, CancellationToken ct = default)       => Task.CompletedTask;
+    public Task<List<EdgeRecord>> GetAllEdgesAsync(CancellationToken ct = default)
+        => Task.FromResult(new List<EdgeRecord>());
 }
