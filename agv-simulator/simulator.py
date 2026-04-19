@@ -116,6 +116,9 @@ def _ts() -> str:
 def _topic(serial: str, msg_type: str) -> str:
     return f"{INTERFACE_NAME}/{MAJOR_VERSION}/{MANUFACTURER}/{serial}/{msg_type}"
 
+def _is_charging_node(node_id: str) -> bool:
+    return node_id.upper().startswith("CHG")
+
 
 # ── AGV state ─────────────────────────────────────────────────────────────────
 
@@ -203,6 +206,7 @@ class AgvSimulator:
             x=node["x"], y=node["y"], theta=node["theta"],
             map_id=node.get("mapId", "UNKNOWN"),
             last_node_id=start_node,
+            charging=_is_charging_node(start_node),
         )
         self._lock = threading.Lock()
         self._order_event = threading.Event()
@@ -274,6 +278,7 @@ class AgvSimulator:
         oupd   = order.get("orderUpdateId", 0)
 
         with self._lock:
+            self.state.charging        = False
             self.state.order_id        = oid
             self.state.order_update_id = oupd
             self.state.node_states = [
@@ -424,6 +429,8 @@ class AgvSimulator:
                     self._simulate_order(order)
             else:
                 with self._lock:
+                    if not self.state.charging and _is_charging_node(self.state.last_node_id):
+                        self.state.charging = True
                     if self.state.charging:
                         self.state.battery_charge = min(100.0, self.state.battery_charge + 1.0)
                         if self.state.battery_charge >= 100.0:
