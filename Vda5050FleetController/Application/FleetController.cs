@@ -348,6 +348,7 @@ public class FleetController
             OrderId   = o.OrderId,
             SourceId  = o.SourceId,
             DestId    = o.DestId,
+            LoadId    = o.LoadId,
             Status    = o.Status.ToString(),
             VehicleId = o.AssignedVehicleId
         }).ToList()
@@ -400,9 +401,10 @@ public record TopologyEdge
 
 public record OrderSummary
 {
-    public string OrderId   { get; init; } = string.Empty;
-    public string SourceId  { get; init; } = string.Empty;
-    public string DestId    { get; init; } = string.Empty;
-    public string Status    { get; init; } = string.Empty;
+    public string OrderId    { get; init; } = string.Empty;
+    public string SourceId   { get; init; } = string.Empty;
+    public string DestId     { get; init; } = string.Empty;
+    public string? LoadId    { get; init; }
+    public string Status     { get; init; } = string.Empty;
     public string? VehicleId { get; init; }
 }

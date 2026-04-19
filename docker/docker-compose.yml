@@ -72,10 +72,10 @@ services:
       - fleet-net
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/fleet/status || exit 1"]
-      interval: 15s
+      interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 20s
+      retries: 10
+      start_period: 60s
 
   # ── MQTT Explorer (Web-UI zum Debuggen) ──────────────────────────────────────
   # Aufruf: http://localhost:4000

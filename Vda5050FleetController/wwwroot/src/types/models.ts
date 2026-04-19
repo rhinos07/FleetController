@@ -36,6 +36,7 @@ export interface OrderSummary {
   orderId: string;
   sourceId: string;
   destId: string;
+  loadId?: string;
   status: TransportStatus;
   vehicleId?: string;
 }

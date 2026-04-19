@@ -20,6 +20,7 @@ export class FleetOrderList extends HTMLElement {
         <thead>
           <tr>
             <th>Order ID</th>
+            <th>Load</th>
             <th>Source</th>
             <th>Destination</th>
             <th>Status</th>
@@ -27,7 +28,7 @@ export class FleetOrderList extends HTMLElement {
           </tr>
         </thead>
         <tbody id="orderRows">
-          <tr><td colspan="5" class="muted">Waiting for live data …</td></tr>
+          <tr><td colspan="6" class="muted">Waiting for live data …</td></tr>
         </tbody>
       </table>
     `;
@@ -42,7 +43,7 @@ export class FleetOrderList extends HTMLElement {
 
     if (active.length === 0) {
       this.tableBodyEl.innerHTML =
-        '<tr><td colspan="5" class="muted">No active orders</td></tr>';
+        '<tr><td colspan="6" class="muted">No active orders</td></tr>';
       return;
     }
 
@@ -51,6 +52,7 @@ export class FleetOrderList extends HTMLElement {
         (o) => `
           <tr>
             <td>${this.esc(o.orderId)}</td>
+            <td>${o.loadId ? this.esc(o.loadId) : "<span class='muted'>—</span>"}</td>
             <td>${this.esc(o.sourceId)}</td>
             <td>${this.esc(o.destId)}</td>
             <td><span class="status-badge status-${o.status.toLowerCase()}">${this.esc(o.status)}</span></td>
