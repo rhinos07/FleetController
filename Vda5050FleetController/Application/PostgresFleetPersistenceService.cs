@@ -106,7 +106,7 @@ public class PostgresFleetPersistenceService : IFleetPersistenceService
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Failed to persist node {NodeId}", node.NodeId);
+            _log.LogWarning(ex, "Failed to persist node {NodeId}", Sanitize(node.NodeId));
         }
     }
 
@@ -120,7 +120,7 @@ public class PostgresFleetPersistenceService : IFleetPersistenceService
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Failed to delete node {NodeId}", nodeId);
+            _log.LogWarning(ex, "Failed to delete node {NodeId}", Sanitize(nodeId));
         }
     }
 
@@ -146,7 +146,7 @@ public class PostgresFleetPersistenceService : IFleetPersistenceService
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Failed to persist edge {EdgeId}", edge.EdgeId);
+            _log.LogWarning(ex, "Failed to persist edge {EdgeId}", Sanitize(edge.EdgeId));
         }
     }
 
@@ -160,7 +160,7 @@ public class PostgresFleetPersistenceService : IFleetPersistenceService
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Failed to delete edge {EdgeId}", edgeId);
+            _log.LogWarning(ex, "Failed to delete edge {EdgeId}", Sanitize(edgeId));
         }
     }
 
@@ -170,4 +170,8 @@ public class PostgresFleetPersistenceService : IFleetPersistenceService
         var repo = scope.ServiceProvider.GetRequiredService<IFleetRepository>();
         return await repo.GetAllEdgesAsync(ct);
     }
+
+    // Removes newline characters from log arguments to prevent log-forging attacks.
+    private static string Sanitize(string value)
+        => value.Replace("\r", string.Empty).Replace("\n", string.Empty);
 }

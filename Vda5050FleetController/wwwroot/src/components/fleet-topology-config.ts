@@ -1,8 +1,5 @@
 import { TopologyNode, TopologyEdge } from "../types/models";
 
-type EditingNode = Omit<TopologyNode, never> | null;
-type EditingEdge = Omit<TopologyEdge, never> | null;
-
 export class FleetTopologyConfig extends HTMLElement {
   private nodes: TopologyNode[] = [];
   private edges: TopologyEdge[] = [];
