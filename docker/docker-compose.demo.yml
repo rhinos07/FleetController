@@ -1,0 +1,33 @@
+# Demo overlay — adds VDA5050 AGV simulators to the base stack.
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.demo.yml up --build
+#
+# The fleet controller itself is unchanged; the simulator publishes
+# VDA5050 state/connection messages and consumes order messages just
+# like a real AGV would.
+
+services:
+  agv-simulator:
+    build:
+      context: ../agv-simulator
+      dockerfile: Dockerfile
+    container_name: fleet-agv-simulator
+    restart: unless-stopped
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=1883
+      - MQTT_INTERFACE_NAME=${MQTT_INTERFACE_NAME:-uagv}
+      - MQTT_MAJOR_VERSION=${MQTT_MAJOR_VERSION:-v2}
+      - AGV_MANUFACTURER=${AGV_MANUFACTURER:-acme}
+      - AGV_SERIALS=${AGV_SERIALS:-agv-01,agv-02,agv-03}
+      - DRIVE_SPEED=${DRIVE_SPEED:-2.0}
+      - ACTION_DURATION=${ACTION_DURATION:-3.0}
+      - STATE_HZ=${STATE_HZ:-1.0}
+      - IDLE_INTERVAL=${IDLE_INTERVAL:-5.0}
+      - INITIAL_CHARGE=${INITIAL_CHARGE:-80.0}
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - fleet-net
