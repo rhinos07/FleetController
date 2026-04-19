@@ -1,0 +1,14 @@
+{
+  "name": "fleet-manager-ui-tests",
+  "version": "1.0.0",
+  "description": "Playwright end-to-end UI tests for FleetManager",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.0"
+  }
+}

@@ -48,3 +48,49 @@ jobs:
         with:
           name: coverage
           path: '**/TestResults/**/coverage.cobertura.xml'
+
+  ui-test:
+    name: UI Tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Restore & build .NET
+        run: |
+          dotnet restore
+          dotnet build --no-restore --configuration Debug
+
+      - name: Build frontend
+        working-directory: Vda5050FleetController/wwwroot
+        run: npm ci && npm run build
+
+      - name: Install Playwright & browsers
+        working-directory: FleetManager.UITests
+        run: npm ci && npx playwright install --with-deps chromium firefox
+
+      - name: Run Playwright tests
+        working-directory: FleetManager.UITests
+        run: npm test
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: FleetManager.UITests/playwright-report/
+
