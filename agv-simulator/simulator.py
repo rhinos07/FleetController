@@ -56,6 +56,8 @@ IDLE_INTERVAL    = float(os.getenv("IDLE_INTERVAL",    "5.0"))
 INITIAL_CHARGE   = float(os.getenv("INITIAL_CHARGE",  "80.0"))
 TOPOLOGY_RETRY_S = float(os.getenv("TOPOLOGY_RETRY_S", "3.0"))
 TOPOLOGY_RETRIES = int(os.getenv("TOPOLOGY_MAX_RETRIES", "30"))
+# Distance (in map units) below which a vehicle is considered "already at" a node
+NODE_ARRIVAL_TOLERANCE = 0.05
 
 # ── Topology fetch ─────────────────────────────────────────────────────────────
 
@@ -308,13 +310,16 @@ class AgvSimulator:
         if not lock.acquire(blocking=False):
             print(f"[{self.state.serial}] Node {node_id} occupied — waiting …")
             lock.acquire()
-        self._held_node = node_id
+        with self._lock:
+            self._held_node = node_id
 
     def _release_node(self, node_id: str) -> None:
         """Give up exclusive hold on node_id."""
-        if self._held_node == node_id:
-            _get_node_lock(node_id).release()
+        with self._lock:
+            if self._held_node != node_id:
+                return
             self._held_node = None
+        _get_node_lock(node_id).release()
 
     # ── Order simulation ───────────────────────────────────────────────────────
 
@@ -364,7 +369,7 @@ class AgvSimulator:
                 self._acquire_node(node_id)
 
             # Update edge states when actually driving to a new node
-            if dist > 0.05 and i > 0 and i - 1 < len(edges):
+            if dist > NODE_ARRIVAL_TOLERANCE and i > 0 and i - 1 < len(edges):
                 gone_edge = edges[i - 1]["edgeId"]
                 with self._lock:
                     self.state.edge_states = [
@@ -375,7 +380,7 @@ class AgvSimulator:
             if prev_held is not None and prev_held != node_id:
                 self._release_node(prev_held)
 
-            if dist > 0.05:
+            if dist > NODE_ARRIVAL_TOLERANCE:
                 self._drive(cur_x, cur_y, target_x, target_y, target_theta, dist)
 
             with self._lock:
