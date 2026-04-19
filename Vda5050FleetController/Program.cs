@@ -228,19 +228,22 @@ public class MqttBackgroundService : BackgroundService
     }
 }
 
-// ── Startup: Load topology from DB ───────────────────────────────────────────
+// ── Startup: Load topology from DB (and optionally seed demo data) ───────────
 public class TopologyStartupLoader : IHostedService
 {
     private readonly IServiceScopeFactory             _scopeFactory;
     private readonly TopologyMap                      _topology;
+    private readonly IFleetPersistenceService         _persistence;
     private readonly ILogger<TopologyStartupLoader>   _log;
 
     public TopologyStartupLoader(IServiceScopeFactory scopeFactory,
                                  TopologyMap topology,
+                                 IFleetPersistenceService persistence,
                                  ILogger<TopologyStartupLoader> log)
     {
         _scopeFactory = scopeFactory;
         _topology     = topology;
+        _persistence  = persistence;
         _log          = log;
     }
 
@@ -260,7 +263,82 @@ public class TopologyStartupLoader : IHostedService
 
         _log.LogInformation("Topology loaded: {NodeCount} nodes, {EdgeCount} edges",
             nodes.Count, edges.Count);
+
+        var seedDemo = string.Equals(
+            Environment.GetEnvironmentVariable("SEED_DEMO_TOPOLOGY"), "true",
+            StringComparison.OrdinalIgnoreCase);
+
+        if (nodes.Count == 0 && seedDemo)
+            await SeedDemoTopologyAsync(ct);
     }
 
     public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+
+    // ── Demo topology ─────────────────────────────────────────────────────────
+    //
+    //  Map: DEMO-WAREHOUSE  (canvas: 900×500 px @ 15 px/unit → 60×33 units)
+    //
+    //   CHG-1 (3,3)                                     CHG-2 (56,3)
+    //
+    //   IN-A  (5,8)  ─────────────────────────────────  OUT-A (54,8)
+    //
+    //   IN-B  (5,16) ─────────────────────────────────  OUT-B (54,16)
+    //
+    //   IN-C  (5,24) ─────────────────────────────────  OUT-C (54,24)
+    //
+    private static readonly string MapId = "DEMO-WAREHOUSE";
+    private static readonly double Pi    = Math.PI;
+
+    private static readonly TopologyNode[] DemoNodes =
+    [
+        new() { NodeId = "CHG-1", X =  3, Y =  3, Theta = 0,  MapId = "DEMO-WAREHOUSE" },
+        new() { NodeId = "CHG-2", X = 56, Y =  3, Theta = Pi, MapId = "DEMO-WAREHOUSE" },
+        new() { NodeId = "IN-A",  X =  5, Y =  8, Theta = 0,  MapId = "DEMO-WAREHOUSE" },
+        new() { NodeId = "IN-B",  X =  5, Y = 16, Theta = 0,  MapId = "DEMO-WAREHOUSE" },
+        new() { NodeId = "IN-C",  X =  5, Y = 24, Theta = 0,  MapId = "DEMO-WAREHOUSE" },
+        new() { NodeId = "OUT-A", X = 54, Y =  8, Theta = Pi, MapId = "DEMO-WAREHOUSE" },
+        new() { NodeId = "OUT-B", X = 54, Y = 16, Theta = Pi, MapId = "DEMO-WAREHOUSE" },
+        new() { NodeId = "OUT-C", X = 54, Y = 24, Theta = Pi, MapId = "DEMO-WAREHOUSE" },
+    ];
+
+    private static readonly TopologyEdge[] DemoEdges =
+    [
+        // IN → OUT (all combinations)
+        new() { EdgeId = "E-IN-A-OUT-A", From = "IN-A", To = "OUT-A" },
+        new() { EdgeId = "E-IN-A-OUT-B", From = "IN-A", To = "OUT-B" },
+        new() { EdgeId = "E-IN-A-OUT-C", From = "IN-A", To = "OUT-C" },
+        new() { EdgeId = "E-IN-B-OUT-A", From = "IN-B", To = "OUT-A" },
+        new() { EdgeId = "E-IN-B-OUT-B", From = "IN-B", To = "OUT-B" },
+        new() { EdgeId = "E-IN-B-OUT-C", From = "IN-B", To = "OUT-C" },
+        new() { EdgeId = "E-IN-C-OUT-A", From = "IN-C", To = "OUT-A" },
+        new() { EdgeId = "E-IN-C-OUT-B", From = "IN-C", To = "OUT-B" },
+        new() { EdgeId = "E-IN-C-OUT-C", From = "IN-C", To = "OUT-C" },
+        // Charging → IN stations
+        new() { EdgeId = "E-CHG-1-IN-A", From = "CHG-1", To = "IN-A" },
+        new() { EdgeId = "E-CHG-1-IN-B", From = "CHG-1", To = "IN-B" },
+        new() { EdgeId = "E-CHG-1-IN-C", From = "CHG-1", To = "IN-C" },
+        // Charging → OUT stations
+        new() { EdgeId = "E-CHG-2-OUT-A", From = "CHG-2", To = "OUT-A" },
+        new() { EdgeId = "E-CHG-2-OUT-B", From = "CHG-2", To = "OUT-B" },
+        new() { EdgeId = "E-CHG-2-OUT-C", From = "CHG-2", To = "OUT-C" },
+    ];
+
+    private async Task SeedDemoTopologyAsync(CancellationToken ct)
+    {
+        _log.LogInformation("Seeding demo topology ({NodeCount} nodes, {EdgeCount} edges)...",
+            DemoNodes.Length, DemoEdges.Length);
+
+        foreach (var node in DemoNodes)
+        {
+            _topology.AddNode(node.NodeId, node.X, node.Y, node.Theta, node.MapId);
+            await _persistence.SaveNodeAsync(node, ct);
+        }
+        foreach (var edge in DemoEdges)
+        {
+            _topology.AddEdge(edge.EdgeId, edge.From, edge.To);
+            await _persistence.SaveEdgeAsync(edge, ct);
+        }
+
+        _log.LogInformation("Demo topology seeded successfully");
+    }
 }

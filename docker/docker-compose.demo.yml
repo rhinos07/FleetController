@@ -8,6 +8,12 @@
 # like a real AGV would.
 
 services:
+  fleet-controller:
+    environment:
+      # Seeds the demo topology into an empty database on first start.
+      # Remove or set to "false" once you have configured your own topology.
+      - SEED_DEMO_TOPOLOGY=true
+
   agv-simulator:
     build:
       context: ../agv-simulator
@@ -15,6 +21,7 @@ services:
     container_name: fleet-agv-simulator
     restart: unless-stopped
     environment:
+      - FLEET_CONTROLLER_URL=http://fleet-controller:8080
       - MQTT_HOST=mosquitto
       - MQTT_PORT=1883
       - MQTT_INTERFACE_NAME=${MQTT_INTERFACE_NAME:-uagv}
@@ -28,6 +35,8 @@ services:
       - INITIAL_CHARGE=${INITIAL_CHARGE:-80.0}
     depends_on:
       mosquitto:
+        condition: service_healthy
+      fleet-controller:
         condition: service_healthy
     networks:
       - fleet-net

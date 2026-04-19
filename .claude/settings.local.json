@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(dotnet test:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(xargs ls *)"
     ]
   }
 }

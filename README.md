@@ -70,6 +70,21 @@ MQTT topics follow the VDA5050 convention: `{interface}/{version}/{manufacturer}
 - **TransportOrder** — Order state machine: `Pending → Assigned → InProgress → Completed/Failed`
 - **TopologyMap** — Graph-based routing; builds VDA5050-compliant node/edge sequences with pick/drop actions
 
+## Demo-Modus
+
+Zum Ausprobieren ohne echte Hardware gibt es einen AGV-Simulator, der VDA5050-konforme
+Fahrzeuge simuliert. Er wird als separater Docker-Container per Compose-Overlay gestartet:
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.demo.yml up --build
+```
+
+Danach das Live-Dashboard unter **http://localhost:8080** öffnen und einen
+Transportauftrag abschicken — die Fahrzeuge melden sich automatisch an und
+fahren den Auftrag ab.
+
+Details zur Konfiguration des Simulators: [`docker/README.md`](docker/README.md)
+
 ## Prerequisites
 
 - .NET 8 SDK
