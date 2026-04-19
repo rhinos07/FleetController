@@ -9,10 +9,17 @@ Vda5050FleetController/
 ├── Application/          # Fleet orchestration (FleetController, Registry, Queue)
 ├── Domain/               # Business models (Vehicle, TransportOrder, TopologyMap)
 ├── Infrastructure/       # MQTT service and background service
+├── wwwroot/              # Frontend (TypeScript WebComponents)
+│   ├── src/
+│   │   ├── components/   # WebComponent definitions
+│   │   ├── services/     # SignalR service
+│   │   ├── types/        # TypeScript type definitions
+│   │   └── styles/       # CSS stylesheets
+│   └── dist/             # Bundled output
 └── Program.cs            # Minimal API endpoints and DI configuration
 ```
 
-**Patterns:** Clean Architecture · Event-driven (MQTT Pub/Sub) · Singleton service registration
+**Patterns:** Clean Architecture · Event-driven (MQTT Pub/Sub) · Singleton service registration · WebComponents UI
 
 ## API Endpoints
 
@@ -66,7 +73,28 @@ MQTT topics follow the VDA5050 convention: `{interface}/{version}/{manufacturer}
 ## Prerequisites
 
 - .NET 8 SDK
+- Node.js 20+ (for frontend build)
 - MQTT broker (e.g. Mosquitto) on `localhost:1883`
+
+## Build
+
+### Frontend (TypeScript/WebComponents)
+
+```bash
+# Build the frontend
+./build-frontend.sh
+
+# Or manually:
+cd Vda5050FleetController/wwwroot
+npm install
+npm run build
+```
+
+### Backend (.NET)
+
+```bash
+dotnet build
+```
 
 ## Run
 

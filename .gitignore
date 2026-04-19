@@ -3,3 +3,8 @@ obj/
 
 .env
 appsettings.Development.json
+
+# Frontend build artifacts
+node_modules/
+dist/
+*.log
