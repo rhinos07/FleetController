@@ -25,9 +25,11 @@ Environment variables:
   INITIAL_CHARGE       Initial battery %               (default: 80.0)
   TOPOLOGY_RETRY_S     Seconds between topology retries(default: 3.0)
   TOPOLOGY_MAX_RETRIES Max retries for topology fetch  (default: 30)
+  SEQ_URL              Seq ingestion URL               (default: unset = console only)
 """
 
 import json
+import logging
 import math
 import os
 import threading
@@ -39,6 +41,30 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import paho.mqtt.client as mqtt
+
+# ── Logging setup ─────────────────────────────────────────────────────────────
+
+def _setup_logging() -> None:
+    seq_url = os.getenv("SEQ_URL")
+    if seq_url:
+        import seqlog
+        seqlog.log_to_seq(
+            server_url=seq_url,
+            level=logging.DEBUG,
+            batch_size=10,
+            auto_flush_timeout=2,
+            override_root_logger=True,
+            additional_structured_properties=["serial", "order_id", "node_id"],
+        )
+    else:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="[%(asctime)s %(levelname)s] %(name)s: %(message)s",
+            datefmt="%H:%M:%S",
+        )
+
+_setup_logging()
+log = logging.getLogger("agv_simulator")
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
@@ -86,11 +112,11 @@ def fetch_topology() -> tuple[dict, list]:
                 }
                 for n in raw_nodes
             }
-            print(f"Topology loaded: {len(nodes)} nodes, {len(raw_edges)} edges")
+            log.info("Topology loaded: %d nodes, %d edges", len(nodes), len(raw_edges))
             return nodes, raw_edges
 
         except Exception as e:
-            print(f"Topology fetch attempt {attempt}/{TOPOLOGY_RETRIES} failed: {e}")
+            log.warning("Topology fetch attempt %d/%d failed: %s", attempt, TOPOLOGY_RETRIES, e)
             if attempt < TOPOLOGY_RETRIES:
                 time.sleep(TOPOLOGY_RETRY_S)
 
@@ -239,6 +265,7 @@ class AgvSimulator:
             last_node_id=start_node,
             charging=_is_charging_node(start_node),
         )
+        self._log = logging.getLogger(f"agv.{serial}")
         self._lock = threading.Lock()
         self._order_event = threading.Event()
         self._pending_order: Optional[dict] = None
@@ -257,10 +284,10 @@ class AgvSimulator:
 
     def _on_connect(self, client, _userdata, _flags, rc):
         if rc != 0:
-            print(f"[{self.state.serial}] MQTT connect failed rc={rc}")
+            self._log.error("MQTT connect failed rc=%d", rc)
             return
 
-        print(f"[{self.state.serial}] Connected to {MQTT_HOST}:{MQTT_PORT}")
+        self._log.info("Connected to %s:%d", MQTT_HOST, MQTT_PORT)
         client.subscribe(_topic(self.state.serial, "order"),          qos=1)
         client.subscribe(_topic(self.state.serial, "instantActions"), qos=1)
 
@@ -272,18 +299,18 @@ class AgvSimulator:
         try:
             payload = json.loads(msg.payload.decode())
         except Exception as e:
-            print(f"[{self.state.serial}] Bad message on {msg.topic}: {e}")
+            self._log.warning("Bad message on %s: %s", msg.topic, e)
             return
 
         if msg.topic.endswith("/order"):
-            print(f"[{self.state.serial}] Order received: {payload.get('orderId')}")
+            self._log.info("Order received: %s", payload.get("orderId"))
             with self._lock:
                 self._pending_order = payload
             self._order_event.set()
 
         elif msg.topic.endswith("/instantActions"):
             for action in payload.get("instantActions", []):
-                print(f"[{self.state.serial}] InstantAction: {action.get('actionType')}")
+                self._log.info("InstantAction: %s", action.get("actionType"))
                 with self._lock:
                     self._instant_actions.append(action)
 
@@ -308,7 +335,7 @@ class AgvSimulator:
         """Block until this vehicle exclusively holds node_id."""
         lock = _get_node_lock(node_id)
         if not lock.acquire(blocking=False):
-            print(f"[{self.state.serial}] Node {node_id} occupied — waiting …")
+            self._log.debug("Node %s occupied — waiting", node_id)
             lock.acquire()
         with self._lock:
             self._held_node = node_id
@@ -348,7 +375,7 @@ class AgvSimulator:
             # Node position comes from the order message; fall back to fetched topology
             node_pos = node.get("nodePosition") or self._nodes.get(node_id)
             if not node_pos:
-                print(f"[{self.state.serial}] Unknown node position for {node_id}, skipping")
+                self._log.warning("Unknown node position for %s, skipping", node_id)
                 continue
 
             target_x     = node_pos["x"]
@@ -406,7 +433,7 @@ class AgvSimulator:
             self.state.action_states = []
             self.state.driving       = False
         self._publish_state()
-        print(f"[{self.state.serial}] Order {oid} complete")
+        self._log.info("Order %s complete", oid)
 
     def _drive(self, x0: float, y0: float, x1: float, y1: float, target_theta: float, dist: float):
         dx    = x1 - x0
@@ -440,7 +467,7 @@ class AgvSimulator:
     def _execute_action(self, action: dict):
         action_id   = action.get("actionId", "")
         action_type = action.get("actionType", "unknown")
-        print(f"[{self.state.serial}] Action {action_type} ({action_id}) RUNNING")
+        self._log.info("Action %s (%s) RUNNING", action_type, action_id)
 
         with self._lock:
             self.state.action_states = [
@@ -455,7 +482,7 @@ class AgvSimulator:
                 {"actionId": action_id, "actionStatus": "FINISHED", "resultDescription": "OK"}
             ]
         self._publish_state()
-        print(f"[{self.state.serial}] Action {action_type} ({action_id}) FINISHED")
+        self._log.info("Action %s (%s) FINISHED", action_type, action_id)
 
         time.sleep(0.3)
         with self._lock:
@@ -507,10 +534,8 @@ class AgvSimulator:
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 def main():
-    print(f"VDA5050 AGV Simulator starting")
-    print(f"  Fleet controller: {FLEET_URL}")
-    print(f"  MQTT broker:      {MQTT_HOST}:{MQTT_PORT}")
-    print(f"  Vehicles:         {', '.join(AGV_SERIALS)}")
+    log.info("VDA5050 AGV Simulator starting — fleet=%s broker=%s:%d vehicles=%s",
+             FLEET_URL, MQTT_HOST, MQTT_PORT, ", ".join(AGV_SERIALS))
 
     nodes, _edges = fetch_topology()
     start_nodes   = pick_start_nodes(nodes, len(AGV_SERIALS))
@@ -519,7 +544,7 @@ def main():
     for i, serial in enumerate(AGV_SERIALS):
         start_node = start_nodes[i]
         if start_node not in nodes:
-            print(f"Start node {start_node!r} not in topology, skipping {serial}")
+            log.warning("Start node %r not in topology, skipping %s", start_node, serial)
             continue
         sim = AgvSimulator(serial, start_node, nodes)
         t   = threading.Thread(target=sim.run, name=f"agv-{serial}", daemon=True)
@@ -527,12 +552,12 @@ def main():
         t.start()
         time.sleep(0.5)  # stagger connections
 
-    print(f"All {len(threads)} simulators running")
+    log.info("All %d simulators running", len(threads))
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("Simulator stopped")
+        log.info("Simulator stopped")
 
 
 if __name__ == "__main__":

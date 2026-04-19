@@ -1,1 +1,2 @@
 paho-mqtt==1.6.1
+seqlog==0.4.2

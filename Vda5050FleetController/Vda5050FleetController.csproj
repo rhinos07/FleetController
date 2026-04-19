@@ -9,12 +9,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- MQTT client -->
     <PackageReference Include="linq2db" Version="5.4.1" />
     <PackageReference Include="linq2db.AspNet" Version="5.4.1" />
     <PackageReference Include="MQTTnet" Version="4.3.3.952" />
     <PackageReference Include="Npgsql" Version="8.0.3" />
-    <!-- Swagger / OpenAPI -->
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
+    <PackageReference Include="Serilog.Sinks.Seq" Version="8.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
   </ItemGroup>
 

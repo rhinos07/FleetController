@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Serilog;
 using Vda5050FleetController.Application;
 using Vda5050FleetController.Domain.Models;
 using Vda5050FleetController.Infrastructure.Mqtt;
@@ -13,6 +14,17 @@ using Vda5050FleetController.Infrastructure.Persistence;
 using Vda5050FleetController.Realtime;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ── Logging (Serilog) ─────────────────────────────────────────────────────────
+builder.Host.UseSerilog((ctx, _, cfg) =>
+{
+    cfg.ReadFrom.Configuration(ctx.Configuration)
+       .Enrich.FromLogContext();
+
+    var seqUrl = ctx.Configuration["SEQ_URL"];
+    if (!string.IsNullOrWhiteSpace(seqUrl))
+        cfg.WriteTo.Seq(seqUrl);
+});
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 builder.Services.Configure<MqttOptions>(builder.Configuration.GetSection("Mqtt"));

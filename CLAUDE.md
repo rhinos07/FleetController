@@ -144,9 +144,15 @@ docker compose -f docker/docker-compose.yml up --build
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.demo.yml up --build
 ```
 
+### Docker — with Seq (structured logs)
+```bash
+docker compose -f docker/docker-compose.yml --profile monitoring up --build
+# Seq UI: http://localhost:5341
+```
+
 ### Docker — with MQTT Explorer
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.demo.yml --profile tools up --build
+docker compose -f docker/docker-compose.yml --profile tools up --build
 ```
 
 ## Coding Conventions

@@ -55,14 +55,13 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development}
       - ASPNETCORE_URLS=http://+:8080
-      # MQTT-Einstellungen überschreiben appsettings.json via Env-Vars
       - Mqtt__Host=${MQTT_HOST:-mosquitto}
       - Mqtt__Port=${MQTT_PORT:-1883}
       - Mqtt__ClientId=${MQTT_CLIENT_ID:-fleet-controller-01}
       - Mqtt__InterfaceName=${MQTT_INTERFACE_NAME:-uagv}
       - Mqtt__MajorVersion=${MQTT_MAJOR_VERSION:-v2}
-      # PostgreSQL-Verbindung überschreibt appsettings.json
       - ConnectionStrings__Fleet=Host=postgres;Port=5432;Database=${POSTGRES_DB:-fleet_manager};Username=${POSTGRES_USER:-fleet};Password=${POSTGRES_PASSWORD:-fleet}
+      - SEQ_URL=http://seq:5341
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -77,9 +76,27 @@ services:
       retries: 10
       start_period: 60s
 
-  # ── MQTT Explorer (Web-UI zum Debuggen) ──────────────────────────────────────
-  # Aufruf: http://localhost:4000
-  # Kann mit "docker compose --profile tools up" gestartet werden
+  # ── Seq (structured log UI) ──────────────────────────────────────────────────
+  # Start with: docker compose --profile monitoring up
+  # UI: http://localhost:5341
+  seq:
+    image: datalust/seq:latest
+    container_name: fleet-seq
+    profiles:
+      - monitoring
+    restart: unless-stopped
+    environment:
+      - ACCEPT_EULA=Y
+    ports:
+      - "5341:5341"   # ingestion + UI
+    volumes:
+      - seq-data:/data
+    networks:
+      - fleet-net
+
+  # ── MQTT Explorer (raw MQTT messages) ─────────────────────────────────────────
+  # Start with: docker compose --profile tools up
+  # UI: http://localhost:4000
   mqtt-explorer:
     image: smeagolworms4/mqtt-explorer
     container_name: fleet-mqtt-explorer
@@ -103,6 +120,7 @@ volumes:
   mosquitto-data:
   mosquitto-logs:
   mqtt-explorer-config:
+  seq-data:
 
 networks:
   fleet-net:

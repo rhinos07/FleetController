@@ -22,6 +22,7 @@ services:
     restart: unless-stopped
     environment:
       - FLEET_CONTROLLER_URL=http://fleet-controller:8080
+      - SEQ_URL=http://seq:5341
       - MQTT_HOST=mosquitto
       - MQTT_PORT=1883
       - MQTT_INTERFACE_NAME=${MQTT_INTERFACE_NAME:-uagv}
