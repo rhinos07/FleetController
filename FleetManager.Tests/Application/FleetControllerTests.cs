@@ -35,7 +35,8 @@ public class FleetControllerTests
     }
 
     private static void MakeVehicleAvailable(VehicleRegistry registry,
-        string manufacturer = "Acme", string serial = "SN-001")
+        string manufacturer = "Acme", string serial = "SN-001",
+        AgvPosition? position = null)
     {
         var vehicle = registry.GetOrCreate(manufacturer, serial);
         vehicle.ApplyState(new VehicleState
@@ -43,6 +44,7 @@ public class FleetControllerTests
             Manufacturer = manufacturer,
             SerialNumber = serial,
             Driving      = false,
+            AgvPosition  = position,
             BatteryState = new BatteryState { BatteryCharge = 80.0 },
             Errors       = [],
             NodeStates   = [],
@@ -162,6 +164,46 @@ public class FleetControllerTests
         var published = f.Mqtt.PublishedOrders.Single();
         Assert.Equal("Acme",   published.Manufacturer);
         Assert.Equal("SN-001", published.SerialNumber);
+    }
+
+    [Fact]
+    public async Task RequestTransportAsync_PrefersVehicleAtSourceNode()
+    {
+        var f = CreateFixture();
+        MakeVehicleAvailable(f.Registry, "Acme", "SN-001", new AgvPosition
+        {
+            X = 10.0, Y = 0.0, Theta = 0.0, MapId = "MAP-1"
+        });
+        MakeVehicleAvailable(f.Registry, "Acme", "SN-002", new AgvPosition
+        {
+            X = 0.0, Y = 0.0, Theta = 0.0, MapId = "MAP-1"
+        });
+
+        await f.Controller.RequestTransportAsync("SRC", "DST");
+
+        var published = Assert.Single(f.Mqtt.PublishedOrders);
+        Assert.Equal("Acme", published.Manufacturer);
+        Assert.Equal("SN-002", published.SerialNumber);
+    }
+
+    [Fact]
+    public async Task RequestTransportAsync_PrefersNearestVehicleToSource_WhenNoneAtSource()
+    {
+        var f = CreateFixture();
+        MakeVehicleAvailable(f.Registry, "Acme", "SN-001", new AgvPosition
+        {
+            X = 8.0, Y = 0.0, Theta = 0.0, MapId = "MAP-1"
+        });
+        MakeVehicleAvailable(f.Registry, "Acme", "SN-002", new AgvPosition
+        {
+            X = 2.0, Y = 0.0, Theta = 0.0, MapId = "MAP-1"
+        });
+
+        await f.Controller.RequestTransportAsync("SRC", "DST");
+
+        var published = Assert.Single(f.Mqtt.PublishedOrders);
+        Assert.Equal("Acme", published.Manufacturer);
+        Assert.Equal("SN-002", published.SerialNumber);
     }
 
     [Fact]
