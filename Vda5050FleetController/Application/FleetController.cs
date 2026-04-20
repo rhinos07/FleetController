@@ -154,7 +154,7 @@ public class FleetController
             var pendingOrder = _queue.DequeuePending();
             if (pendingOrder is null) break;
 
-            var vehicle = _registry.FindAvailable();
+            var vehicle = FindBestVehicleForOrder(pendingOrder);
             if (vehicle is null)
             {
                 // No vehicle available — re-queue and wait for next state update
@@ -166,6 +166,43 @@ public class FleetController
 
             await DispatchToVehicleAsync(pendingOrder, vehicle, ct);
         }
+    }
+
+    private Vehicle? FindBestVehicleForOrder(TransportOrder order)
+    {
+        var availableVehicles = _registry.All().Where(v => v.IsAvailable).ToList();
+        if (availableVehicles.Count == 0)
+            return null;
+
+        var sourceNode = _topology.GetNode(order.SourceId);
+        if (sourceNode is null)
+            return availableVehicles.First();
+
+        var rankedVehicle = availableVehicles
+            .Select(v => new
+            {
+                Vehicle = v,
+                Distance = DistanceToSource(v, sourceNode)
+            })
+            .OrderBy(v => v.Distance)
+            .First();
+
+        return double.IsInfinity(rankedVehicle.Distance)
+            ? availableVehicles.First()
+            : rankedVehicle.Vehicle;
+    }
+
+    private static double DistanceToSource(Vehicle vehicle, NodePosition sourceNode)
+    {
+        if (vehicle.Position is null)
+            return double.PositiveInfinity;
+
+        if (!string.Equals(vehicle.Position.MapId, sourceNode.MapId, StringComparison.Ordinal))
+            return double.PositiveInfinity;
+
+        var dx = vehicle.Position.X - sourceNode.X;
+        var dy = vehicle.Position.Y - sourceNode.Y;
+        return Math.Sqrt(dx * dx + dy * dy);
     }
 
     private async Task DispatchToVehicleAsync(TransportOrder transportOrder,
