@@ -471,9 +471,9 @@ public class TopologyMap
         List<VdaAction> pickActions, List<VdaAction> dropActions)
     {
         var sourcePos = GetNode(sourceNodeId)
-            ?? throw new InvalidOperationException($"Source node '{sourceNodeId}' not found in topology");
+            ?? throw new InvalidOperationException($"Source node {sourceNodeId} not found in topology");
         var destPos = GetNode(destNodeId)
-            ?? throw new InvalidOperationException($"Destination node '{destNodeId}' not found in topology");
+            ?? throw new InvalidOperationException($"Destination node {destNodeId} not found in topology");
 
         var edgeId = $"E-{sourceNodeId}-{destNodeId}";
 
