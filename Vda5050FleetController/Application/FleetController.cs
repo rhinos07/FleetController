@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Vda5050FleetController.Application.Contracts;
 using Vda5050FleetController.Domain.Models;
 using Vda5050FleetController.Infrastructure.Mqtt;
 
@@ -82,6 +83,10 @@ public class TransportOrderQueue
 
 // ── Fleet Controller ──────────────────────────────────────────────────────────
 
+/// <summary>
+/// Core orchestrator for the VDA5050 fleet management system.
+/// Handles transport order requests, vehicle dispatch, state updates, and instant actions.
+/// </summary>
 public class FleetController
 {
     private readonly VehicleRegistry          _registry;
@@ -92,8 +97,16 @@ public class FleetController
     private readonly IFleetPersistenceService _persistence;
     private readonly ILogger<FleetController> _log;
 
-    private static readonly string DefaultMapId = "WAREHOUSE-FLOOR-1";
-
+    /// <summary>
+    /// Creates a new FleetController instance.
+    /// </summary>
+    /// <param name="registry">Vehicle registry for managing vehicle instances.</param>
+    /// <param name="queue">Queue for managing transport orders.</param>
+    /// <param name="topology">Topology map for path building.</param>
+    /// <param name="mqtt">MQTT service for VDA5050 communication.</param>
+    /// <param name="statusPublisher">Optional publisher for fleet status updates (defaults to no-op).</param>
+    /// <param name="persistence">Optional persistence service for durability (defaults to no-op).</param>
+    /// <param name="log">Logger instance.</param>
     public FleetController(
         VehicleRegistry          registry,
         TransportOrderQueue      queue,
@@ -369,7 +382,7 @@ public class FleetController
         }).ToList(),
         PendingOrders = _queue.PendingCount,
         ActiveOrders  = _queue.ActiveCount,
-        Nodes = _topology.GetAllNodes().Select(n => new TopologyNode
+        Nodes = _topology.GetAllNodes().Select(n => new TopologyNodeDto
         {
             NodeId = n.NodeId,
             X      = n.Position.X,
@@ -377,7 +390,7 @@ public class FleetController
             Theta  = n.Position.Theta,
             MapId  = n.Position.MapId
         }).ToList(),
-        Edges = _topology.GetAllEdges().Select(e => new TopologyEdge
+        Edges = _topology.GetAllEdges().Select(e => new TopologyEdgeDto
         {
             EdgeId = e.EdgeId,
             From   = e.From,
@@ -399,52 +412,4 @@ public class FleetController
 
     public Task PublishStatusUpdateAsync(CancellationToken ct = default)
         => PublishStatusAsync(ct);
-}
-
-// ── DTOs ──────────────────────────────────────────────────────────────────────
-
-public record FleetStatus
-{
-    public List<VehicleSummary> Vehicles      { get; init; } = [];
-    public int                  PendingOrders { get; init; }
-    public int                  ActiveOrders  { get; init; }
-    public List<TopologyNode>   Nodes         { get; init; } = [];
-    public List<TopologyEdge>   Edges         { get; init; } = [];
-    public List<OrderSummary>   Orders        { get; init; } = [];
-}
-
-public record VehicleSummary
-{
-    public string       VehicleId { get; init; } = string.Empty;
-    public string       Status    { get; init; } = string.Empty;
-    public AgvPosition? Position  { get; init; }
-    public double?      Battery   { get; init; }
-    public string?      OrderId   { get; init; }
-    public DateTime     LastSeen  { get; init; }
-}
-
-public record TopologyNode
-{
-    public string NodeId { get; init; } = string.Empty;
-    public double X      { get; init; }
-    public double Y      { get; init; }
-    public double Theta  { get; init; }
-    public string MapId  { get; init; } = string.Empty;
-}
-
-public record TopologyEdge
-{
-    public string EdgeId { get; init; } = string.Empty;
-    public string From   { get; init; } = string.Empty;
-    public string To     { get; init; } = string.Empty;
-}
-
-public record OrderSummary
-{
-    public string OrderId    { get; init; } = string.Empty;
-    public string SourceId   { get; init; } = string.Empty;
-    public string DestId     { get; init; } = string.Empty;
-    public string? LoadId    { get; init; }
-    public string Status     { get; init; } = string.Empty;
-    public string? VehicleId { get; init; }
 }

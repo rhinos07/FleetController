@@ -1,8 +1,12 @@
 using Microsoft.AspNetCore.SignalR;
 using Vda5050FleetController.Application;
+using Vda5050FleetController.Application.Contracts;
 
 namespace Vda5050FleetController.Realtime;
 
+/// <summary>
+/// SignalR implementation of IFleetStatusPublisher for real-time updates to connected clients.
+/// </summary>
 public class SignalRFleetStatusPublisher(
     IHubContext<FleetStatusHub> hubContext,
     ILogger<SignalRFleetStatusPublisher> log) : IFleetStatusPublisher

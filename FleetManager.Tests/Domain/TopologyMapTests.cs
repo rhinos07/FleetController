@@ -238,4 +238,128 @@ public class TopologyMapTests
         Assert.Equal(88.0, node.Y);
         Assert.Equal("MAP-2", node.MapId);
     }
+
+    // ── Validation ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void AddNode_ThrowsArgumentException_WhenNodeIdIsNullOrEmpty()
+    {
+        var map = new TopologyMap();
+
+        Assert.Throws<ArgumentException>(() => map.AddNode(null!, 0.0, 0.0, 0.0, "MAP-1"));
+        Assert.Throws<ArgumentException>(() => map.AddNode("", 0.0, 0.0, 0.0, "MAP-1"));
+        Assert.Throws<ArgumentException>(() => map.AddNode("  ", 0.0, 0.0, 0.0, "MAP-1"));
+    }
+
+    [Fact]
+    public void AddNode_ThrowsArgumentException_WhenMapIdIsNullOrEmpty()
+    {
+        var map = new TopologyMap();
+
+        Assert.Throws<ArgumentException>(() => map.AddNode("NODE-1", 0.0, 0.0, 0.0, null!));
+        Assert.Throws<ArgumentException>(() => map.AddNode("NODE-1", 0.0, 0.0, 0.0, ""));
+    }
+
+    [Fact]
+    public void AddEdge_ThrowsArgumentException_WhenEdgeIdIsNullOrEmpty()
+    {
+        var map = BuildMap();
+
+        Assert.Throws<ArgumentException>(() => map.AddEdge(null!, "SRC", "DST"));
+        Assert.Throws<ArgumentException>(() => map.AddEdge("", "SRC", "DST"));
+    }
+
+    [Fact]
+    public void AddEdge_ThrowsArgumentException_WhenFromNodeIdIsNullOrEmpty()
+    {
+        var map = BuildMap();
+
+        Assert.Throws<ArgumentException>(() => map.AddEdge("E1", null!, "DST"));
+        Assert.Throws<ArgumentException>(() => map.AddEdge("E1", "", "DST"));
+    }
+
+    [Fact]
+    public void AddEdge_ThrowsArgumentException_WhenToNodeIdIsNullOrEmpty()
+    {
+        var map = BuildMap();
+
+        Assert.Throws<ArgumentException>(() => map.AddEdge("E1", "SRC", null!));
+        Assert.Throws<ArgumentException>(() => map.AddEdge("E1", "SRC", ""));
+    }
+
+    // ── ContainsNode / ContainsEdge ───────────────────────────────────────────
+
+    [Fact]
+    public void ContainsNode_ReturnsTrue_WhenNodeExists()
+    {
+        var map = BuildMap();
+
+        Assert.True(map.ContainsNode("SRC"));
+        Assert.True(map.ContainsNode("DST"));
+    }
+
+    [Fact]
+    public void ContainsNode_ReturnsFalse_WhenNodeDoesNotExist()
+    {
+        var map = BuildMap();
+
+        Assert.False(map.ContainsNode("DOES-NOT-EXIST"));
+    }
+
+    [Fact]
+    public void ContainsEdge_ReturnsTrue_WhenEdgeExists()
+    {
+        var map = BuildMap();
+        map.AddEdge("E1", "SRC", "DST");
+
+        Assert.True(map.ContainsEdge("E1"));
+    }
+
+    [Fact]
+    public void ContainsEdge_ReturnsFalse_WhenEdgeDoesNotExist()
+    {
+        var map = BuildMap();
+
+        Assert.False(map.ContainsEdge("DOES-NOT-EXIST"));
+    }
+
+    // ── NodeCount / EdgeCount ─────────────────────────────────────────────────
+
+    [Fact]
+    public void NodeCount_ReturnsCorrectCount()
+    {
+        var map = BuildMap();
+
+        Assert.Equal(2, map.NodeCount);
+
+        map.AddNode("NEW-NODE", 5.0, 5.0, 0.0, "MAP-1");
+        Assert.Equal(3, map.NodeCount);
+
+        map.RemoveNode("NEW-NODE");
+        Assert.Equal(2, map.NodeCount);
+    }
+
+    [Fact]
+    public void EdgeCount_ReturnsCorrectCount()
+    {
+        var map = BuildMap();
+        Assert.Equal(0, map.EdgeCount);
+
+        map.AddEdge("E1", "SRC", "DST");
+        Assert.Equal(1, map.EdgeCount);
+
+        map.AddEdge("E2", "DST", "SRC");
+        Assert.Equal(2, map.EdgeCount);
+
+        map.RemoveEdge("E1");
+        Assert.Equal(1, map.EdgeCount);
+    }
+
+    // ── DefaultMaxSpeed ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void DefaultMaxSpeed_HasCorrectValue()
+    {
+        Assert.Equal(1.5, TopologyMap.DefaultMaxSpeed);
+    }
 }

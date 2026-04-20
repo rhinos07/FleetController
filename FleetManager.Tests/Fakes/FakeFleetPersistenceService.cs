@@ -1,4 +1,5 @@
 using Vda5050FleetController.Application;
+using Vda5050FleetController.Application.Contracts;
 using Vda5050FleetController.Domain.Models;
 using Vda5050FleetController.Infrastructure.Persistence;
 
@@ -38,12 +39,12 @@ public sealed class FakeFleetPersistenceService : IFleetPersistenceService
     public Task<List<OrderRecord>> GetActiveOrdersAsync(CancellationToken ct = default)
         => Task.FromResult(new List<OrderRecord>());
 
-    public Task SaveNodeAsync(TopologyNode node, CancellationToken ct = default)    => Task.CompletedTask;
+    public Task SaveNodeAsync(TopologyNodeDto node, CancellationToken ct = default)    => Task.CompletedTask;
     public Task DeleteNodeAsync(string nodeId, CancellationToken ct = default)       => Task.CompletedTask;
     public Task<List<NodeRecord>> GetAllNodesAsync(CancellationToken ct = default)
         => Task.FromResult(new List<NodeRecord>());
 
-    public Task SaveEdgeAsync(TopologyEdge edge, CancellationToken ct = default)    => Task.CompletedTask;
+    public Task SaveEdgeAsync(TopologyEdgeDto edge, CancellationToken ct = default)    => Task.CompletedTask;
     public Task DeleteEdgeAsync(string edgeId, CancellationToken ct = default)       => Task.CompletedTask;
     public Task<List<EdgeRecord>> GetAllEdgesAsync(CancellationToken ct = default)
         => Task.FromResult(new List<EdgeRecord>());

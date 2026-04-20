@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Vda5050FleetController.Application;
+using Vda5050FleetController.Application.Contracts;
 using Vda5050FleetController.Domain.Models;
 using Vda5050FleetController.Infrastructure.Mqtt;
 using Vda5050FleetController.Infrastructure.Persistence;
@@ -151,7 +152,7 @@ app.MapGet("/fleet/topology/nodes", (FleetController fc) =>
 
 // POST /fleet/topology/nodes — add or update a node
 app.MapPost("/fleet/topology/nodes",
-    async (TopologyNode node, TopologyMap topology, IFleetPersistenceService persistence,
+    async (TopologyNodeDto node, TopologyMap topology, IFleetPersistenceService persistence,
            FleetController fc, CancellationToken ct) =>
     {
         topology.AddNode(node.NodeId, node.X, node.Y, node.Theta, node.MapId);
@@ -185,7 +186,7 @@ app.MapGet("/fleet/topology/edges", (FleetController fc) =>
 
 // POST /fleet/topology/edges — add or update an edge
 app.MapPost("/fleet/topology/edges",
-    async (TopologyEdge edge, TopologyMap topology, IFleetPersistenceService persistence,
+    async (TopologyEdgeDto edge, TopologyMap topology, IFleetPersistenceService persistence,
            FleetController fc, CancellationToken ct) =>
     {
         topology.AddEdge(edge.EdgeId, edge.From, edge.To);
@@ -302,10 +303,9 @@ public class TopologyStartupLoader : IHostedService
     //
     //   IN-C  (5,24) ─────────────────────────────────  OUT-C (54,24)
     //
-    private static readonly string MapId = "DEMO-WAREHOUSE";
-    private static readonly double Pi    = Math.PI;
+    private static readonly double Pi = Math.PI;
 
-    private static readonly TopologyNode[] DemoNodes =
+    private static readonly TopologyNodeDto[] DemoNodes =
     [
         new() { NodeId = "CHG-1", X =  3, Y =  3, Theta = 0,  MapId = "DEMO-WAREHOUSE" },
         new() { NodeId = "CHG-2", X = 56, Y =  3, Theta = Pi, MapId = "DEMO-WAREHOUSE" },
@@ -317,7 +317,7 @@ public class TopologyStartupLoader : IHostedService
         new() { NodeId = "OUT-C", X = 54, Y = 24, Theta = Pi, MapId = "DEMO-WAREHOUSE" },
     ];
 
-    private static readonly TopologyEdge[] DemoEdges =
+    private static readonly TopologyEdgeDto[] DemoEdges =
     [
         // IN → OUT (all combinations)
         new() { EdgeId = "E-IN-A-OUT-A", From = "IN-A", To = "OUT-A" },
