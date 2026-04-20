@@ -1,4 +1,5 @@
 using Vda5050FleetController.Application;
+using Vda5050FleetController.Application.Contracts;
 
 namespace FleetManager.Tests.Fakes;
 

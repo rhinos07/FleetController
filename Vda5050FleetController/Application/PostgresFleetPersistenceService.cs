@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Vda5050FleetController.Application.Contracts;
 using Vda5050FleetController.Domain.Models;
 using Vda5050FleetController.Infrastructure.Persistence;
 
@@ -89,7 +90,7 @@ public class PostgresFleetPersistenceService : IFleetPersistenceService
 
     // ── Topology ──────────────────────────────────────────────────────────────
 
-    public async Task SaveNodeAsync(TopologyNode node, CancellationToken ct = default)
+    public async Task SaveNodeAsync(TopologyNodeDto node, CancellationToken ct = default)
     {
         try
         {
@@ -131,7 +132,7 @@ public class PostgresFleetPersistenceService : IFleetPersistenceService
         return await repo.GetAllNodesAsync(ct);
     }
 
-    public async Task SaveEdgeAsync(TopologyEdge edge, CancellationToken ct = default)
+    public async Task SaveEdgeAsync(TopologyEdgeDto edge, CancellationToken ct = default)
     {
         try
         {

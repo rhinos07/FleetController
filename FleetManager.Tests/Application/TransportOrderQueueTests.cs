@@ -101,6 +101,8 @@ public class TransportOrderQueueTests
     {
         var queue = CreateQueue();
         var order = MakeOrder("ORD-01");
+        order.Assign("Acme/SN-001");
+        order.Start();
         queue.MarkActive(order);
         queue.Complete("ORD-01");
 

@@ -285,6 +285,74 @@ public class VehicleTests
         Assert.Equal(100, ids.Max());
     }
 
+    // ── Constructor validation ────────────────────────────────────────────────
+
+    [Fact]
+    public void Constructor_ThrowsArgumentException_WhenManufacturerIsNullOrEmpty()
+    {
+        Assert.Throws<ArgumentException>(() => new Vehicle(null!, "SN-001"));
+        Assert.Throws<ArgumentException>(() => new Vehicle("", "SN-001"));
+        Assert.Throws<ArgumentException>(() => new Vehicle("  ", "SN-001"));
+    }
+
+    [Fact]
+    public void Constructor_ThrowsArgumentException_WhenSerialNumberIsNullOrEmpty()
+    {
+        Assert.Throws<ArgumentException>(() => new Vehicle("Acme", null!));
+        Assert.Throws<ArgumentException>(() => new Vehicle("Acme", ""));
+        Assert.Throws<ArgumentException>(() => new Vehicle("Acme", "  "));
+    }
+
+    // ── HasFatalError ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void HasFatalError_True_WhenFatalErrorPresent()
+    {
+        var vehicle = new Vehicle("Acme", "SN-001");
+        vehicle.ApplyState(IdleState() with
+        {
+            Errors = [new VdaError { ErrorLevel = "FATAL", ErrorType = "EMERGENCY_STOP" }]
+        });
+
+        Assert.True(vehicle.HasFatalError);
+    }
+
+    [Fact]
+    public void HasFatalError_False_WhenNoFatalError()
+    {
+        var vehicle = new Vehicle("Acme", "SN-001");
+        vehicle.ApplyState(IdleState() with
+        {
+            Errors = [new VdaError { ErrorLevel = "WARNING", ErrorType = "SENSOR_WARNING" }]
+        });
+
+        Assert.False(vehicle.HasFatalError);
+    }
+
+    [Fact]
+    public void HasFatalError_False_WhenNoErrors()
+    {
+        var vehicle = new Vehicle("Acme", "SN-001");
+        vehicle.ApplyState(IdleState());
+
+        Assert.False(vehicle.HasFatalError);
+    }
+
+    // ── ActiveErrors ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ActiveErrors_IsReadOnlyList()
+    {
+        var vehicle = new Vehicle("Acme", "SN-001");
+        vehicle.ApplyState(IdleState() with
+        {
+            Errors = [new VdaError { ErrorLevel = "WARNING" }]
+        });
+
+        Assert.IsAssignableFrom<IReadOnlyList<VdaError>>(vehicle.ActiveErrors);
+        Assert.Single(vehicle.ActiveErrors);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static VehicleState IdleState() => new()
