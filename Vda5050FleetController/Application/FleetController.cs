@@ -184,8 +184,11 @@ public class FleetController
                 Vehicle = v,
                 Distance = DistanceToSource(v, sourceNode)
             })
-            .OrderBy(v => v.Distance)
-            .First();
+            .MinBy(v => v.Distance) ?? new
+            {
+                Vehicle = availableVehicles.First(),
+                Distance = double.PositiveInfinity
+            };
 
         return double.IsInfinity(rankedVehicle.Distance)
             ? availableVehicles.First()
@@ -197,12 +200,12 @@ public class FleetController
         if (vehicle.Position is null)
             return double.PositiveInfinity;
 
-        if (!string.Equals(vehicle.Position.MapId, sourceNode.MapId, StringComparison.Ordinal))
+        if (!string.Equals(vehicle.Position.MapId, sourceNode.MapId, StringComparison.OrdinalIgnoreCase))
             return double.PositiveInfinity;
 
         var dx = vehicle.Position.X - sourceNode.X;
         var dy = vehicle.Position.Y - sourceNode.Y;
-        return Math.Sqrt(dx * dx + dy * dy);
+        return (dx * dx) + (dy * dy);
     }
 
     private async Task DispatchToVehicleAsync(TransportOrder transportOrder,
