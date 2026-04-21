@@ -47,8 +47,9 @@ public class OrderHistoryRecord
     [Column("load_id"),              Nullable]             public string? LoadId            { get; set; }
     [Column("final_status"),                     NotNull]  public string  FinalStatus       { get; set; } = string.Empty;
     [Column("assigned_vehicle_id"),  Nullable]             public string? AssignedVehicleId { get; set; }
-    [Column("created_at"),                       NotNull]  public DateTime CreatedAt         { get; set; }
-    [Column("completed_at"),                     NotNull]  public DateTime CompletedAt       { get; set; }
+    [Column("created_at"),                       NotNull]  public DateTime  CreatedAt         { get; set; }
+    [Column("started_at"),           Nullable]             public DateTime? StartedAt         { get; set; }
+    [Column("completed_at"),                     NotNull]  public DateTime  CompletedAt       { get; set; }
 }
 
 // ── Topology node ─────────────────────────────────────────────────────────────

@@ -64,8 +64,13 @@ public class SchemaInitializer : IHostedService
                 final_status         TEXT        NOT NULL,
                 assigned_vehicle_id  TEXT,
                 created_at           TIMESTAMPTZ NOT NULL,
+                started_at           TIMESTAMPTZ,
                 completed_at         TIMESTAMPTZ NOT NULL
             );", ct);
+
+        // Migration: add started_at to existing databases created before this column was introduced.
+        await db.ExecuteAsync(@"
+            ALTER TABLE order_history ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;", ct);
 
         await db.ExecuteAsync(@"
             CREATE TABLE IF NOT EXISTS topology_nodes (

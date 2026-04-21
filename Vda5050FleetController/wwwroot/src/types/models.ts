@@ -41,6 +41,19 @@ export interface OrderSummary {
   vehicleId?: string;
 }
 
+export interface OrderHistoryDto {
+  id: number;
+  orderId: string;
+  sourceId: string;
+  destId: string;
+  loadId?: string;
+  finalStatus: string;
+  assignedVehicleId?: string;
+  createdAt: string;   // ISO 8601 datetime string
+  startedAt?: string;  // ISO 8601 datetime string, nullable
+  completedAt: string; // ISO 8601 datetime string
+}
+
 export interface FleetStatus {
   vehicles: VehicleSummary[];
   activeOrders: number;

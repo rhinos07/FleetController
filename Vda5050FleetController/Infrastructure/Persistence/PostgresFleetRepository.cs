@@ -71,6 +71,7 @@ public class PostgresFleetRepository : IFleetRepository
             FinalStatus       = completedOrder.Status.ToString(),
             AssignedVehicleId = completedOrder.AssignedVehicleId,
             CreatedAt         = completedOrder.CreatedAt,
+            StartedAt         = completedOrder.StartedAt,
             CompletedAt       = DateTime.UtcNow
         };
 
