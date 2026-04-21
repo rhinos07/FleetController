@@ -949,4 +949,98 @@ public class FleetControllerTests
         });
         Assert.Null(vehicle.RemainingNodeIds);
     }
+
+    // ── CancelOrderAsync ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CancelOrderAsync_ReturnsFalse_WhenOrderNotPending()
+    {
+        var f = CreateFixture();
+
+        var result = await f.Controller.CancelOrderAsync("DOES-NOT-EXIST");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task CancelOrderAsync_ReturnsTrue_AndRemovesFromQueue()
+    {
+        var f = CreateFixture();
+        await f.Controller.RequestTransportAsync("SRC", "DST");
+        var orderId = f.Controller.GetStatus().Orders.Single().OrderId;
+
+        var result = await f.Controller.CancelOrderAsync(orderId);
+
+        Assert.True(result);
+        Assert.Equal(0, f.Queue.PendingCount);
+    }
+
+    [Fact]
+    public async Task CancelOrderAsync_PublishesStatusUpdate()
+    {
+        var f = CreateFixture();
+        await f.Controller.RequestTransportAsync("SRC", "DST");
+        var orderId = f.Controller.GetStatus().Orders.Single().OrderId;
+        f.StatusPublisher.PublishedStatuses.Clear();
+
+        await f.Controller.CancelOrderAsync(orderId);
+
+        Assert.Single(f.StatusPublisher.PublishedStatuses);
+    }
+
+    [Fact]
+    public async Task CancelOrderAsync_ReturnsFalse_ForActiveOrder()
+    {
+        var f = CreateFixture();
+        MakeVehicleAvailable(f.Registry);
+        await f.Controller.RequestTransportAsync("SRC", "DST");
+        var orderId = f.Controller.GetStatus().Orders.Single().OrderId;
+
+        // Order was dispatched, so it is now active (not pending)
+        var result = await f.Controller.CancelOrderAsync(orderId);
+
+        Assert.False(result);
+        Assert.Equal(1, f.Queue.ActiveCount);
+    }
+
+    // ── UpdateOrderAsync ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateOrderAsync_ReturnsFalse_WhenOrderNotPending()
+    {
+        var f = CreateFixture();
+
+        var result = await f.Controller.UpdateOrderAsync("DOES-NOT-EXIST", "SRC", "DST", null);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task UpdateOrderAsync_ReturnsTrue_AndUpdatesOrder()
+    {
+        var f = CreateFixture();
+        await f.Controller.RequestTransportAsync("SRC", "DST");
+        var orderId = f.Controller.GetStatus().Orders.Single().OrderId;
+
+        var result = await f.Controller.UpdateOrderAsync(orderId, "NEW-SRC", "NEW-DST", "PAL-01");
+
+        Assert.True(result);
+        var updated = f.Controller.GetStatus().Orders.Single();
+        Assert.Equal("NEW-SRC", updated.SourceId);
+        Assert.Equal("NEW-DST", updated.DestId);
+        Assert.Equal("PAL-01",  updated.LoadId);
+    }
+
+    [Fact]
+    public async Task UpdateOrderAsync_PublishesStatusUpdate()
+    {
+        var f = CreateFixture();
+        await f.Controller.RequestTransportAsync("SRC", "DST");
+        var orderId = f.Controller.GetStatus().Orders.Single().OrderId;
+        f.StatusPublisher.PublishedStatuses.Clear();
+
+        await f.Controller.UpdateOrderAsync(orderId, "SRC", "DST", null);
+
+        Assert.Single(f.StatusPublisher.PublishedStatuses);
+    }
 }

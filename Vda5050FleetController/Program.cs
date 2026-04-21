@@ -99,6 +99,26 @@ app.MapPost("/fleet/orders", async (TransportRequest req, FleetController fc, Ca
 .WithName("RequestTransport")
 .WithSummary("Submit a transport order (called by WMS/MFR)");
 
+// PUT /fleet/orders/{orderId} — modify a pending transport order
+app.MapPut("/fleet/orders/{orderId}",
+    async (string orderId, TransportRequest req, FleetController fc, CancellationToken ct) =>
+    {
+        var updated = await fc.UpdateOrderAsync(orderId, req.SourceStationId, req.DestStationId, req.LoadId, ct);
+        return updated ? Results.Ok() : Results.NotFound($"Pending order '{orderId}' not found");
+    })
+    .WithName("UpdateOrder")
+    .WithSummary("Update source, destination or load of a pending transport order");
+
+// DELETE /fleet/orders/{orderId} — cancel a pending transport order
+app.MapDelete("/fleet/orders/{orderId}",
+    async (string orderId, FleetController fc, CancellationToken ct) =>
+    {
+        var cancelled = await fc.CancelOrderAsync(orderId, ct);
+        return cancelled ? Results.NoContent() : Results.NotFound($"Pending order '{orderId}' not found");
+    })
+    .WithName("CancelOrder")
+    .WithSummary("Cancel a pending transport order");
+
 // POST /fleet/vehicles/{vehicleId}/pause
 app.MapPost("/fleet/vehicles/{vehicleId}/pause",
     async (string vehicleId, FleetController fc, CancellationToken ct) =>

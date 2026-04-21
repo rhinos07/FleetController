@@ -214,6 +214,26 @@ th {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
+/* Order Configuration styles */
+.order-config {
+  background: white;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.order-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.order-section-header h2 {
+  margin: 0;
+}
+
 .topology-section {
   margin-bottom: 1.5rem;
 }
