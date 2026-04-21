@@ -19,17 +19,20 @@ public class FleetControllerTests
 
     private static Fixture CreateFixture()
     {
-        var registry = new VehicleRegistry(NullLogger<VehicleRegistry>.Instance);
-        var queue    = new TransportOrderQueue(NullLogger<TransportOrderQueue>.Instance);
-        var topology = new TopologyMap();
+        var registry        = new VehicleRegistry(NullLogger<VehicleRegistry>.Instance);
+        var queue           = new TransportOrderQueue(NullLogger<TransportOrderQueue>.Instance);
+        var topology        = new TopologyMap();
         topology.AddNode("SRC", 0.0,  0.0, 0.0, "MAP-1");
         topology.AddNode("DST", 10.0, 0.0, 0.0, "MAP-1");
-        var mqtt       = new FakeMqttService();
+        var mqtt            = new FakeMqttService();
         var statusPublisher = new FakeFleetStatusPublisher();
-        var controller = new FC(
+        var dispatcher      = new VehicleDispatcher(registry, queue, topology, mqtt,
+            NoOpFleetPersistenceService.Instance, NullLogger<VehicleDispatcher>.Instance);
+        var controller      = new FC(
             registry, queue, topology, mqtt,
             statusPublisher,
             persistence: null,
+            dispatcher,
             NullLogger<FC>.Instance);
 
         return new Fixture(controller, registry, queue, mqtt, statusPublisher);
@@ -466,9 +469,9 @@ public class FleetControllerTests
     /// </summary>
     private static Fixture CreateFixtureWithEdges()
     {
-        var registry = new VehicleRegistry(NullLogger<VehicleRegistry>.Instance);
-        var queue    = new TransportOrderQueue(NullLogger<TransportOrderQueue>.Instance);
-        var topology = new TopologyMap();
+        var registry        = new VehicleRegistry(NullLogger<VehicleRegistry>.Instance);
+        var queue           = new TransportOrderQueue(NullLogger<TransportOrderQueue>.Instance);
+        var topology        = new TopologyMap();
         topology.AddNode("SRC",  0.0,  0.0, 0.0, "MAP-1");
         topology.AddNode("MID",  5.0,  0.0, 0.0, "MAP-1");
         topology.AddNode("DST",  10.0, 0.0, 0.0, "MAP-1");
@@ -478,10 +481,13 @@ public class FleetControllerTests
         topology.AddEdge("E-MID-SIDE", "MID", "SIDE");
         var mqtt            = new FakeMqttService();
         var statusPublisher = new FakeFleetStatusPublisher();
+        var dispatcher      = new VehicleDispatcher(registry, queue, topology, mqtt,
+            NoOpFleetPersistenceService.Instance, NullLogger<VehicleDispatcher>.Instance);
         var controller      = new FC(
             registry, queue, topology, mqtt,
             statusPublisher,
             persistence: null,
+            dispatcher,
             NullLogger<FC>.Instance);
         return new Fixture(controller, registry, queue, mqtt, statusPublisher);
     }
@@ -624,9 +630,11 @@ public class FleetControllerTests
         topology.AddNode("SIDE", 10.0, 5.0, 0.0, "MAP-1");
         topology.AddEdge("E-SRC-DST",  "SRC",  "DST");
         topology.AddEdge("E-DST-SIDE", "DST",  "SIDE");
-        var mqtt = new FakeMqttService();
-        var f    = new FC(registry, queue, topology, mqtt,
-            statusPublisher: null, persistence: null, NullLogger<FC>.Instance);
+        var mqtt       = new FakeMqttService();
+        var dispatcher = new VehicleDispatcher(registry, queue, topology, mqtt,
+            NoOpFleetPersistenceService.Instance, NullLogger<VehicleDispatcher>.Instance);
+        var f          = new FC(registry, queue, topology, mqtt,
+            statusPublisher: null, persistence: null, dispatcher, NullLogger<FC>.Instance);
 
         // SN-001 (dispatcher) starts at SRC; SN-002 (blocker) is at DST
         MakeVehicleIdleAtNode(registry, "Acme", "SN-001", "SRC");
@@ -792,8 +800,10 @@ public class FleetControllerTests
         topology.AddEdge("E-SRC-DST",  "SRC", "DST");
         topology.AddEdge("E-DST-SIDE", "DST", "SIDE");
         var mqtt       = new FakeMqttService();
+        var dispatcher = new VehicleDispatcher(registry, queue, topology, mqtt,
+            NoOpFleetPersistenceService.Instance, NullLogger<VehicleDispatcher>.Instance);
         var controller = new FC(registry, queue, topology, mqtt,
-            statusPublisher: null, persistence: null, NullLogger<FC>.Instance);
+            statusPublisher: null, persistence: null, dispatcher, NullLogger<FC>.Instance);
 
         // SN-001 is driving — not yet at DST so it is NOT detected as a stationary blocker
         // at dispatch time.

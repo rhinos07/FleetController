@@ -37,6 +37,7 @@ if (builder.Environment.IsEnvironment("UITests"))
 // ── Domain / Application ──────────────────────────────────────────────────────
 builder.Services.AddSingleton<VehicleRegistry>();
 builder.Services.AddSingleton<TransportOrderQueue>();
+builder.Services.AddSingleton<VehicleDispatcher>();
 builder.Services.AddSingleton<FleetController>();
 builder.Services.AddSingleton<IFleetStatusPublisher, SignalRFleetStatusPublisher>();
 builder.Services.AddSingleton<TopologyMap>();

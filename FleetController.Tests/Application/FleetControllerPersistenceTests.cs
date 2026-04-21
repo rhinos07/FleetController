@@ -26,10 +26,13 @@ public class FleetControllerPersistenceTests
         topology.AddNode("DST", 10.0, 0.0, 0.0, "MAP-1");
         var mqtt        = new FakeMqttService();
         var persistence = new FakeFleetPersistenceService();
+        var dispatcher  = new VehicleDispatcher(registry, queue, topology, mqtt,
+            persistence, NullLogger<VehicleDispatcher>.Instance);
         var controller  = new FC(
             registry, queue, topology, mqtt,
             statusPublisher: null,
             persistence,
+            dispatcher,
             NullLogger<FC>.Instance);
 
         return new PersistenceFixture(controller, registry, queue, mqtt, persistence);
