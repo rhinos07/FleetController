@@ -68,6 +68,14 @@ public class Vehicle
     public const double MinimumBatteryForDispatch = 20.0;
 
     /// <summary>
+    /// The remaining node IDs from the last state message where the vehicle was stopped mid-path
+    /// (driving=false with at least one pending NodeState).  Null when the vehicle is driving
+    /// normally or has no active order.  Used by the fleet controller to proactively re-send
+    /// dodge orders when a blocker at one of these nodes later becomes idle.
+    /// </summary>
+    public IReadOnlyList<string>? RemainingNodeIds { get; private set; }
+
+    /// <summary>
     /// Creates a new vehicle instance.
     /// </summary>
     /// <param name="manufacturer">Manufacturer name (required, non-empty).</param>
@@ -99,6 +107,13 @@ public class Vehicle
 
         if (!string.IsNullOrEmpty(state.LastNodeId))
             LastNodeId = state.LastNodeId;
+
+        // Track remaining nodes when the vehicle has stopped mid-path (potential blockage).
+        // Clear when driving again or order is finished.
+        if (!state.Driving && state.NodeStates.Count > 0 && !string.IsNullOrEmpty(state.OrderId))
+            RemainingNodeIds = state.NodeStates.Select(ns => ns.NodeId).ToList();
+        else
+            RemainingNodeIds = null;
 
         Status = DetermineStatus(state);
     }

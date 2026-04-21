@@ -389,11 +389,27 @@ class AgvSimulator:
             dist = math.sqrt(dx * dx + dy * dy)
 
             # Acquire exclusive access to the target node before moving there.
-            # If another vehicle is already there, we block until it departs.
+            # If another vehicle is already there, publish a stopped state so the fleet
+            # controller can send a dodge order, then block until the node is free.
             with self._lock:
                 prev_held = self._held_node
             if node_id != prev_held:
-                self._acquire_node(node_id)
+                node_lock = _get_node_lock(node_id)
+                if not node_lock.acquire(blocking=False):
+                    # Node is occupied — inform fleet controller we are stopped and waiting,
+                    # then block until the node is free.  After node_lock.acquire() returns
+                    # we hold the lock in both branches, so _held_node is always set while
+                    # the lock is owned.
+                    with self._lock:
+                        self.state.driving = False
+                        self.state.vx = 0.0
+                        self.state.vy = 0.0
+                    self._publish_state()
+                    self._log.debug("Node %s occupied — waiting", node_id)
+                    node_lock.acquire()
+                # Lock is now held (either acquired non-blocking above, or after waiting).
+                with self._lock:
+                    self._held_node = node_id
 
             # Update edge states when actually driving to a new node
             if dist > NODE_ARRIVAL_TOLERANCE and i > 0 and i - 1 < len(edges):

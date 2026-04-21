@@ -313,9 +313,12 @@ public class FleetController
         // Nodes that must not be used as dodge targets:
         // - nodes where idle vehicles already stand (they'll become the dodge origin)
         // - nodes on the assigned vehicle's own path (source is held during pick; destination is the goal)
+        // - the assigned vehicle's current position (it physically occupies that node)
         var pendingOccupied = new HashSet<string>(idleAtNode.Keys);
         foreach (var n in pathNodeIds)
             pendingOccupied.Add(n);
+        if (assignedVehicle.LastNodeId is not null)
+            pendingOccupied.Add(assignedVehicle.LastNodeId);
 
         foreach (var nodeId in pathNodeIds)
         {
@@ -344,6 +347,33 @@ public class FleetController
             }
 
             pendingOccupied.Remove(nodeId);
+        }
+    }
+
+    /// <summary>
+    /// When <paramref name="idleVehicle"/> just became idle at its last known node, checks whether
+    /// any other vehicle was previously stopped mid-path waiting for that node to free up.
+    /// For each such blocked vehicle, re-runs blocker resolution so a dodge order is sent to
+    /// <paramref name="idleVehicle"/> and the blocked vehicle can proceed.
+    /// </summary>
+    private async Task TryUnblockVehiclesBlockedByAsync(Vehicle idleVehicle, CancellationToken ct)
+    {
+        if (idleVehicle.LastNodeId is null)
+            return;
+
+        var blockedVehicles = _registry.All()
+            .Where(v => v.VehicleId != idleVehicle.VehicleId
+                        && v.RemainingNodeIds is not null
+                        && v.RemainingNodeIds.Contains(idleVehicle.LastNodeId))
+            .ToList();
+
+        foreach (var blockedVehicle in blockedVehicles)
+        {
+            _log.LogInformation(
+                "Vehicle {BlockedId} is stopped mid-path waiting for {NodeId} (now held by idle {IdleId}); retriggering blocker resolution",
+                blockedVehicle.VehicleId, idleVehicle.LastNodeId, idleVehicle.VehicleId);
+
+            await TryResolveBlockersAsync(blockedVehicle.RemainingNodeIds!, blockedVehicle, ct);
         }
     }
 
@@ -414,9 +444,13 @@ public class FleetController
             await TryResolveBlockersAsync(remainingNodeIds, vehicle, ct: default);
         }
 
-        // Vehicle just became idle → try to assign next pending order
+        // Vehicle just became idle → try to assign next pending order, and unblock any
+        // active vehicle that was previously stopped because this node was occupied.
         if (!wasIdle && vehicle.IsAvailable)
+        {
             await TryDispatchAsync();
+            await TryUnblockVehiclesBlockedByAsync(vehicle, ct: default);
+        }
 
         await PublishStatusAsync();
     }

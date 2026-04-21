@@ -455,19 +455,27 @@ public class FleetControllerTests
     // ── Blocker resolution ────────────────────────────────────────────────────
 
     /// <summary>
-    /// Creates a three-node topology  SRC –edge1– MID –edge2– DST
-    /// that gives <see cref="TopologyMap.GetNeighborNodeIds"/> something to work with.
+    /// Creates a four-node topology:
+    ///   SRC –E-SRC-MID– MID –E-MID-DST– DST
+    ///                    |
+    ///                 E-MID-SIDE
+    ///                    |
+    ///                   SIDE
+    /// SIDE gives GetNeighborNodeIds a free escape route from MID so that tests covering
+    /// blockers at MID have a valid non-conflicting dodge target.
     /// </summary>
     private static Fixture CreateFixtureWithEdges()
     {
         var registry = new VehicleRegistry(NullLogger<VehicleRegistry>.Instance);
         var queue    = new TransportOrderQueue(NullLogger<TransportOrderQueue>.Instance);
         var topology = new TopologyMap();
-        topology.AddNode("SRC", 0.0,  0.0, 0.0, "MAP-1");
-        topology.AddNode("MID", 5.0,  0.0, 0.0, "MAP-1");
-        topology.AddNode("DST", 10.0, 0.0, 0.0, "MAP-1");
-        topology.AddEdge("E-SRC-MID", "SRC", "MID");
-        topology.AddEdge("E-MID-DST", "MID", "DST");
+        topology.AddNode("SRC",  0.0,  0.0, 0.0, "MAP-1");
+        topology.AddNode("MID",  5.0,  0.0, 0.0, "MAP-1");
+        topology.AddNode("DST",  10.0, 0.0, 0.0, "MAP-1");
+        topology.AddNode("SIDE", 5.0,  5.0, 0.0, "MAP-1");
+        topology.AddEdge("E-SRC-MID",  "SRC", "MID");
+        topology.AddEdge("E-MID-DST",  "MID", "DST");
+        topology.AddEdge("E-MID-SIDE", "MID", "SIDE");
         var mqtt            = new FakeMqttService();
         var statusPublisher = new FakeFleetStatusPublisher();
         var controller      = new FC(
@@ -758,5 +766,187 @@ public class FleetControllerTests
         });
 
         Assert.DoesNotContain(f.Mqtt.PublishedOrders, o => o.OrderId.StartsWith("DODGE-"));
+    }
+
+    // ── Proactive dodge: blocker becomes idle while active vehicle is stopped ────
+
+    [Fact]
+    public async Task ProactiveDodge_SendsDodgeToBlocker_WhenItBecomesIdleAfterActiveVehicleWasStopped()
+    {
+        // Core regression scenario:
+        // 1. SN-001 arrives at DST and finishes its order (parked idle at DST).
+        // 2. SN-002 has an active order whose path includes DST; it stops mid-path and
+        //    reports remaining node states = [DST] (driving=false, nodeStates=[DST]).
+        // 3. At that moment SN-001 is still Driving — not yet a blocker at dispatch time.
+        // 4. Later SN-001 completes its order and becomes Idle at DST.
+        // 5. Expected: the fleet controller proactively sends a dodge order to SN-001 so
+        //    that SN-002 can continue to DST.
+
+        // Topology: SRC --- DST --- SIDE  (SIDE is the only free dodge target)
+        var registry = new VehicleRegistry(NullLogger<VehicleRegistry>.Instance);
+        var queue    = new TransportOrderQueue(NullLogger<TransportOrderQueue>.Instance);
+        var topology = new TopologyMap();
+        topology.AddNode("SRC",  0.0,  0.0, 0.0, "MAP-1");
+        topology.AddNode("DST",  10.0, 0.0, 0.0, "MAP-1");
+        topology.AddNode("SIDE", 10.0, 5.0, 0.0, "MAP-1");
+        topology.AddEdge("E-SRC-DST",  "SRC", "DST");
+        topology.AddEdge("E-DST-SIDE", "DST", "SIDE");
+        var mqtt       = new FakeMqttService();
+        var controller = new FC(registry, queue, topology, mqtt,
+            statusPublisher: null, persistence: null, NullLogger<FC>.Instance);
+
+        // SN-001 is driving — not yet at DST so it is NOT detected as a stationary blocker
+        // at dispatch time.
+        var vehicle1 = registry.GetOrCreate("Acme", "SN-001");
+        vehicle1.ApplyState(new VehicleState
+        {
+            Manufacturer = "Acme",
+            SerialNumber = "SN-001",
+            OrderId      = "TO-agv1-mission",
+            LastNodeId   = "SRC",
+            Driving      = true,
+            BatteryState = new BatteryState { BatteryCharge = 80.0 },
+            Errors       = [],
+            NodeStates   = [new NodeState { NodeId = "DST" }],
+            EdgeStates   = []
+        });
+
+        // SN-002 is idle at SRC and gets dispatched to DST.
+        MakeVehicleIdleAtNode(registry, "Acme", "SN-002", "SRC");
+        await controller.RequestTransportAsync("SRC", "DST");
+
+        // No dodge at dispatch time: SN-001 is still Driving, not a stationary blocker.
+        Assert.DoesNotContain(mqtt.PublishedOrders, o => o.OrderId.StartsWith("DODGE-"));
+
+        // Capture the transport order ID assigned to SN-002.
+        var transportOrderId = mqtt.PublishedOrders.Single(o => !o.OrderId.StartsWith("DODGE-")).OrderId;
+        mqtt.PublishedOrders.Clear();
+
+        // SN-002 stops mid-path waiting for DST (the simulator publishes this blocked state).
+        await mqtt.SimulateStateAsync(new VehicleState
+        {
+            Manufacturer = "Acme",
+            SerialNumber = "SN-002",
+            OrderId      = transportOrderId,
+            LastNodeId   = "SRC",
+            Driving      = false,
+            BatteryState = new BatteryState { BatteryCharge = 80.0 },
+            Errors       = [],
+            NodeStates   = [new NodeState { NodeId = "DST" }],
+            EdgeStates   = []
+        });
+
+        // SN-001 is still Driving — no dodge can be sent yet.
+        Assert.DoesNotContain(mqtt.PublishedOrders, o => o.OrderId.StartsWith("DODGE-"));
+
+        // SN-001 now arrives at DST and completes its order (becomes Idle at DST).
+        await mqtt.SimulateStateAsync(new VehicleState
+        {
+            Manufacturer = "Acme",
+            SerialNumber = "SN-001",
+            OrderId      = "TO-agv1-mission",
+            LastNodeId   = "DST",
+            Driving      = false,
+            BatteryState = new BatteryState { BatteryCharge = 80.0 },
+            Errors       = [],
+            NodeStates   = [],
+            EdgeStates   = []
+        });
+
+        // The fleet controller must proactively send a dodge to SN-001 (now idle at DST)
+        // because SN-002 had previously reported DST in its remaining nodes.
+        var dodge = mqtt.PublishedOrders.FirstOrDefault(o => o.OrderId.StartsWith("DODGE-"));
+        Assert.NotNull(dodge);
+        Assert.Equal("SN-001", dodge.SerialNumber);
+        // SN-001 should move to SIDE (the only free neighbour of DST).
+        Assert.Contains(dodge.Nodes, n => n.NodeId == "SIDE");
+    }
+
+    [Fact]
+    public async Task ProactiveDodge_NoDodge_WhenNoVehicleHasRemainingNodeAtBlockerPosition()
+    {
+        // If no active vehicle has a remaining-node matching the newly-idle vehicle's position,
+        // no proactive dodge should be issued.
+        var f = CreateFixtureWithEdges();
+
+        MakeVehicleIdleAtNode(f.Registry, "Acme", "SN-001", "DST");
+        await f.Controller.RequestTransportAsync("SRC", "DST");
+        f.Mqtt.PublishedOrders.Clear();
+
+        // SN-001 completes the order at DST; no other vehicle is blocked waiting for DST.
+        var orderId = f.Mqtt.PublishedOrders.FirstOrDefault()?.OrderId ?? "TO-test";
+        await f.Mqtt.SimulateStateAsync(new VehicleState
+        {
+            Manufacturer = "Acme",
+            SerialNumber = "SN-001",
+            OrderId      = orderId,
+            LastNodeId   = "DST",
+            Driving      = false,
+            BatteryState = new BatteryState { BatteryCharge = 80.0 },
+            Errors       = [],
+            NodeStates   = [],
+            EdgeStates   = []
+        });
+
+        Assert.DoesNotContain(f.Mqtt.PublishedOrders, o => o.OrderId.StartsWith("DODGE-"));
+    }
+
+    [Fact]
+    public void Vehicle_TracksRemainingNodeIds_WhenStoppedMidPath()
+    {
+        var vehicle = new Vehicle("Acme", "SN-001");
+
+        vehicle.ApplyState(new VehicleState
+        {
+            Manufacturer = "Acme",
+            SerialNumber = "SN-001",
+            OrderId      = "TO-test",
+            LastNodeId   = "SRC",
+            Driving      = false,
+            BatteryState = new BatteryState { BatteryCharge = 80.0 },
+            Errors       = [],
+            NodeStates   = [new NodeState { NodeId = "MID" }, new NodeState { NodeId = "DST" }],
+            EdgeStates   = []
+        });
+
+        Assert.NotNull(vehicle.RemainingNodeIds);
+        Assert.Contains("MID", vehicle.RemainingNodeIds);
+        Assert.Contains("DST", vehicle.RemainingNodeIds);
+    }
+
+    [Fact]
+    public void Vehicle_ClearsRemainingNodeIds_WhenDriving()
+    {
+        var vehicle = new Vehicle("Acme", "SN-001");
+
+        // First: stopped mid-path
+        vehicle.ApplyState(new VehicleState
+        {
+            Manufacturer = "Acme",
+            SerialNumber = "SN-001",
+            OrderId      = "TO-test",
+            LastNodeId   = "SRC",
+            Driving      = false,
+            BatteryState = new BatteryState { BatteryCharge = 80.0 },
+            Errors       = [],
+            NodeStates   = [new NodeState { NodeId = "DST" }],
+            EdgeStates   = []
+        });
+        Assert.NotNull(vehicle.RemainingNodeIds);
+
+        // Then: vehicle starts driving again (dodge was effective)
+        vehicle.ApplyState(new VehicleState
+        {
+            Manufacturer = "Acme",
+            SerialNumber = "SN-001",
+            OrderId      = "TO-test",
+            LastNodeId   = "SRC",
+            Driving      = true,
+            BatteryState = new BatteryState { BatteryCharge = 80.0 },
+            Errors       = [],
+            NodeStates   = [new NodeState { NodeId = "DST" }],
+            EdgeStates   = []
+        });
+        Assert.Null(vehicle.RemainingNodeIds);
     }
 }
