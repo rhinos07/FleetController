@@ -320,8 +320,12 @@ public class FleetController
             dropActions);
 
         // Move any idle vehicle that is parked on a node the assigned vehicle needs to traverse
-        await TryResolveBlockersAsync(nodes.Select(n => n.NodeId).ToList(), vehicle, ct);
-
+        var pathNodeIds = nodes.Select(n => n.NodeId).ToList();
+        _log.LogDebug(
+            "Dispatch order {OrderId} to vehicle {VehicleId}: checking {PathNodeCount} path nodes for blockers",
+            transportOrder.OrderId, vehicle.VehicleId, pathNodeIds.Count);
+        await TryResolveBlockersAsync(pathNodeIds, vehicle, ct);
+        
         // Build VDA5050 order
         var vdaOrder = new Order
         {
@@ -355,21 +359,46 @@ public class FleetController
     private async Task TryResolveBlockersAsync(IReadOnlyList<string> pathNodeIds,
         Vehicle assignedVehicle, CancellationToken ct)
     {
+        _log.LogDebug(
+            "TryResolveBlockersAsync: Checking {PathNodeCount} path nodes for blocking vehicles (assigned: {AssignedVehicleId})",
+            pathNodeIds.Count, assignedVehicle.VehicleId);
+
         // Build a lookup: nodeId → list of stationary vehicles parked there that can be moved.
         // Includes vehicles in Busy status whose last order has already completed (orderId no longer
         // in the active queue) — they are physically present but their status hasn't reset to Idle yet.
-        var idleAtNode = _registry.All()
-            .Where(v => v.VehicleId != assignedVehicle.VehicleId
-                        && v.LastNodeId is not null
-                        && v.Status is not VehicleStatus.Driving
-                                    and not VehicleStatus.Offline
-                                    and not VehicleStatus.Error
-                        && (v.CurrentOrderId is null || _queue.FindActive(v.CurrentOrderId) is null))
+        var allVehicles = _registry.All().ToList();
+        _log.LogDebug(
+            "TryResolveBlockersAsync: Scanning {TotalVehicles} vehicles for blockers",
+            allVehicles.Count);
+
+        var idleAtNode = allVehicles
+            .Where(v =>
+            {
+                var passes = v.VehicleId != assignedVehicle.VehicleId
+                             && v.LastNodeId is not null
+                             && v.Status is not VehicleStatus.Driving
+                                         and not VehicleStatus.Offline
+                                         and not VehicleStatus.Error
+                             && (v.CurrentOrderId is null || _queue.FindActive(v.CurrentOrderId) is null);
+                if (!passes && v.VehicleId != assignedVehicle.VehicleId)
+                    _log.LogDebug(
+                        "Vehicle {VehicleId} excluded: Status={Status}, LastNode={LastNodeId}, CurrentOrder={OrderId}",
+                        v.VehicleId, v.Status, v.LastNodeId, v.CurrentOrderId);
+                return passes;
+            })
             .GroupBy(v => v.LastNodeId!)
             .ToDictionary(g => g.Key, g => g.ToList());
 
         if (idleAtNode.Count == 0)
+        {
+            _log.LogDebug(
+                "TryResolveBlockersAsync: No blocking vehicles found on path nodes");
             return;
+        }
+
+        _log.LogInformation(
+            "TryResolveBlockersAsync: Found {BlockingNodeCount} nodes with blocking vehicles: {BlockingNodeIds}",
+            idleAtNode.Count, string.Join(", ", idleAtNode.Keys));
 
         // Nodes that must not be used as dodge targets:
         // - nodes where idle vehicles already stand (they'll become the dodge origin)
@@ -384,18 +413,36 @@ public class FleetController
         foreach (var nodeId in pathNodeIds)
         {
             if (!idleAtNode.TryGetValue(nodeId, out var blockers))
+            {
+                _log.LogDebug("Node {NodeId} on path has no blocking vehicles", nodeId);
                 continue;
+            }
+
+            _log.LogInformation(
+                "Node {NodeId} has {BlockerCount} blocking vehicle(s): {VehicleIds}",
+                nodeId, blockers.Count, string.Join(", ", blockers.Select(b => b.VehicleId)));
 
             foreach (var blocker in blockers)
             {
-                var dodgeTarget = _topology.GetNeighborNodeIds(nodeId)
-                    .FirstOrDefault(n => !pendingOccupied.Contains(n));
+                var neighbors = _topology.GetNeighborNodeIds(nodeId).ToList();
+                _log.LogDebug(
+                    "Vehicle {VehicleId} at node {NodeId}: {NeighborCount} neighbors available",
+                    blocker.VehicleId, nodeId, neighbors.Count);
+
+                var freeNeighbors = neighbors.Where(n => !pendingOccupied.Contains(n)).ToList();
+                _log.LogDebug(
+                    "Vehicle {VehicleId}: {FreeNeighborCount} free neighbors (occupied: {OccupiedCount})",
+                    blocker.VehicleId, freeNeighbors.Count, neighbors.Count - freeNeighbors.Count);
+
+                var dodgeTarget = freeNeighbors.FirstOrDefault();
 
                 if (dodgeTarget is null)
                 {
                     _log.LogWarning(
-                        "No free neighbour for blocking vehicle {VehicleId} at node {NodeId}; skipping dodge",
-                        blocker.VehicleId, nodeId);
+                        "No free neighbour for blocking vehicle {VehicleId} at node {NodeId}; neighbors: [{AllNeighbors}], occupied: [{OccupiedNeighbors}]",
+                        blocker.VehicleId, nodeId,
+                        string.Join(", ", neighbors),
+                        string.Join(", ", neighbors.Where(n => pendingOccupied.Contains(n))));
                     break;
                 }
 
@@ -446,6 +493,9 @@ public class FleetController
     private async Task SendDodgeOrderAsync(Vehicle vehicle, string fromNodeId,
         string toNodeId, CancellationToken ct)
     {
+        _log.LogDebug(
+            "SendDodgeOrderAsync: Building path {FromNode} → {ToNode} for vehicle {VehicleId}",
+            fromNodeId, toNodeId, vehicle.VehicleId);
         var (nodes, edges) = _topology.BuildPath(fromNodeId, toNodeId, [], []);
         var order = new Order
         {
@@ -457,7 +507,13 @@ public class FleetController
             Nodes         = nodes,
             Edges         = edges
         };
+        _log.LogDebug(
+            "SendDodgeOrderAsync: Publishing dodge order {DodgeOrderId} for vehicle {VehicleId}",
+            order.OrderId, vehicle.VehicleId);
         await _mqtt.PublishOrderAsync(order, ct);
+        _log.LogInformation(
+            "Dodge order {DodgeOrderId} published to vehicle {VehicleId}",
+            order.OrderId, vehicle.VehicleId);
     }
 
     // ── Inbound: Vehicle state update ────────────────────────────────────────
@@ -501,6 +557,9 @@ public class FleetController
             && !string.IsNullOrEmpty(state.OrderId)
             && state.NodeStates.Count > 0)
         {
+            _log.LogInformation(
+                "Vehicle {VehicleId} stopped mid-path with active order {OrderId}: {RemainingNodeCount} nodes remaining. Checking for blockers.",
+                vehicle.VehicleId, state.OrderId, state.NodeStates.Count);
             var remainingNodeIds = state.NodeStates.Select(ns => ns.NodeId).ToList();
             await TryResolveBlockersAsync(remainingNodeIds, vehicle, ct: default);
         }
@@ -510,7 +569,13 @@ public class FleetController
         if (!wasIdle && vehicle.IsAvailable)
         {
             await TryDispatchAsync();
-            await TryUnblockVehiclesBlockedByAsync(vehicle, ct: default);
+            // Only trigger dodge if no transport order was just dispatched to this vehicle.
+            // Sending a dodge order to a vehicle that already received a transport order would
+            // overwrite it on the AGV (higher HeaderId wins).
+            var wasDispatched = _queue.GetAllOrders()
+                .Any(o => o.AssignedVehicleId == vehicle.VehicleId);
+            if (!wasDispatched)
+                await TryUnblockVehiclesBlockedByAsync(vehicle, ct: default);
         }
 
         await PublishStatusAsync();

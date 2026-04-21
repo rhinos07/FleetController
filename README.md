@@ -2,6 +2,12 @@
 
 ASP.NET Core 8 service for orchestrating AGV fleets via the **VDA5050 v2** protocol over MQTT.
 
+## Screenshots
+
+![Dashboard](docs/screenshots/Dashboard.png)
+
+![Vehicles](docs/screenshots/vehicles.png)
+
 ## Architecture
 
 ```

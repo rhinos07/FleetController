@@ -44,6 +44,12 @@ import paho.mqtt.client as mqtt
 
 # ── Logging setup ─────────────────────────────────────────────────────────────
 
+class _AppLabel(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.Application = "agv-simulator"
+        return True
+
+
 def _setup_logging() -> None:
     seq_url = os.getenv("SEQ_URL")
     if seq_url:
@@ -61,6 +67,7 @@ def _setup_logging() -> None:
             format="[%(asctime)s %(levelname)s] %(name)s: %(message)s",
             datefmt="%H:%M:%S",
         )
+    logging.getLogger().addFilter(_AppLabel())
 
 _setup_logging()
 log = logging.getLogger("agv_simulator")
@@ -302,7 +309,12 @@ class AgvSimulator:
             return
 
         if msg.topic.endswith("/order"):
-            self._log.info("Order received: %s", payload.get("orderId"))
+            oid   = payload.get("orderId", "")
+            nodes = payload.get("nodes", [])
+            src   = nodes[0]["nodeId"]  if nodes else "?"
+            dst   = nodes[-1]["nodeId"] if nodes else "?"
+            kind  = "dodge" if oid.startswith("DODGE-") else "transport"
+            self._log.info("Order received [%s] %s: %s → %s", kind, oid, src, dst)
             with self._lock:
                 self._pending_order = payload
             self._order_event.set()
@@ -341,11 +353,10 @@ class AgvSimulator:
 
     def _release_node(self, node_id: str) -> None:
         """Give up exclusive hold on node_id."""
-        with self._lock:
-            if self._held_node != node_id:
-                return
-            self._held_node = None
         _get_node_lock(node_id).release()
+        with self._lock:
+            if self._held_node == node_id:
+                self._held_node = None
 
     # ── Order simulation ───────────────────────────────────────────────────────
 
@@ -374,8 +385,11 @@ class AgvSimulator:
             # Node position comes from the order message; fall back to fetched topology
             node_pos = node.get("nodePosition") or self._nodes.get(node_id)
             if not node_pos:
-                self._log.warning("Unknown node position for %s, skipping", node_id)
-                continue
+                self._log.error(
+                    "Order %s rejected: node %s has no known position — cannot execute",
+                    oid, node_id,
+                )
+                return
 
             target_x     = node_pos["x"]
             target_y     = node_pos["y"]
@@ -448,7 +462,10 @@ class AgvSimulator:
             self.state.action_states = []
             self.state.driving       = False
         self._publish_state()
-        self._log.info("Order %s complete", oid)
+        kind = "dodge" if oid.startswith("DODGE-") else "transport"
+        src  = nodes[0]["nodeId"]  if nodes else "?"
+        dst  = nodes[-1]["nodeId"] if nodes else "?"
+        self._log.info("Order completed [%s] %s: %s → %s", kind, oid, src, dst)
 
     def _drive(self, x0: float, y0: float, x1: float, y1: float, target_theta: float, dist: float):
         dx    = x1 - x0
@@ -532,7 +549,14 @@ class AgvSimulator:
                     order = self._pending_order
                     self._pending_order = None
                 if order:
-                    self._simulate_order(order)
+                    try:
+                        self._simulate_order(order)
+                    except Exception as exc:
+                        oid  = order.get("orderId", "?")
+                        kind = "dodge" if oid.startswith("DODGE-") else "transport"
+                        self._log.error(
+                            "Order failed [%s] %s: %s", kind, oid, exc, exc_info=True,
+                        )
             else:
                 with self._lock:
                     if not self.state.charging and _is_charging_node(self.state.last_node_id):
