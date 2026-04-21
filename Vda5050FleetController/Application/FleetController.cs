@@ -449,7 +449,13 @@ public class FleetController
         if (!wasIdle && vehicle.IsAvailable)
         {
             await TryDispatchAsync();
-            await TryUnblockVehiclesBlockedByAsync(vehicle, ct: default);
+            // Only trigger dodge if no transport order was just dispatched to this vehicle.
+            // Sending a dodge order to a vehicle that already received a transport order would
+            // overwrite it on the AGV (higher HeaderId wins).
+            var wasDispatched = _queue.GetAllOrders()
+                .Any(o => o.AssignedVehicleId == vehicle.VehicleId);
+            if (!wasDispatched)
+                await TryUnblockVehiclesBlockedByAsync(vehicle, ct: default);
         }
 
         await PublishStatusAsync();
