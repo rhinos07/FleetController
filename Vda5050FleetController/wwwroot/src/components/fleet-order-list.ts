@@ -24,6 +24,7 @@ export class FleetOrderList extends HTMLElement {
 
   public updateNodes(nodes: TopologyNode[]): void {
     this.nodes = nodes ?? [];
+    this.refreshNodeDatalist();
   }
 
   // ── Rendering ──────────────────────────────────────────────────────────────
@@ -42,15 +43,16 @@ export class FleetOrderList extends HTMLElement {
           <h4 id="orderFormTitle">Add Order</h4>
           <div class="form-row">
             <label>Source Station
-              <input type="text" id="orderSource" placeholder="e.g. IN-A" required>
+              <input type="text" id="orderSource" placeholder="e.g. IN-A" list="nodeList" required>
             </label>
             <label>Destination Station
-              <input type="text" id="orderDest" placeholder="e.g. OUT-B" required>
+              <input type="text" id="orderDest" placeholder="e.g. OUT-B" list="nodeList" required>
             </label>
             <label>Load ID (optional)
               <input type="text" id="orderLoad" placeholder="e.g. PAL-42">
             </label>
           </div>
+          <datalist id="nodeList"></datalist>
           <div class="form-actions">
             <button class="btn-primary" id="saveOrderBtn">Save</button>
             <button class="btn-secondary" id="cancelOrderFormBtn">Cancel</button>
@@ -76,6 +78,16 @@ export class FleetOrderList extends HTMLElement {
         </table>
       </div>
     `;
+  }
+
+  // ── Datalist refresh ───────────────────────────────────────────────────────
+
+  private refreshNodeDatalist(): void {
+    const datalist = this.querySelector<HTMLDataListElement>("#nodeList");
+    if (!datalist) return;
+    datalist.innerHTML = this.nodes
+      .map((n) => `<option value="${this.esc(n.nodeId)}">`)
+      .join("");
   }
 
   // ── Table refresh ──────────────────────────────────────────────────────────
@@ -106,8 +118,8 @@ export class FleetOrderList extends HTMLElement {
             <td>${o.vehicleId ? this.esc(o.vehicleId) : "<span class='muted'>—</span>"}</td>
             <td class="action-cell">
               ${o.status === "Pending" ? `
-                <button class="btn-edit" data-action="editOrder" data-id="${this.esc(o.orderId)}">Edit</button>
-                <button class="btn-danger" data-action="cancelOrder" data-id="${this.esc(o.orderId)}">Cancel</button>
+                <button class="btn-edit" data-action="editOrder" data-id="${o.orderId}">Edit</button>
+                <button class="btn-danger" data-action="cancelOrder" data-id="${o.orderId}">Cancel</button>
               ` : ""}
             </td>
           </tr>
@@ -265,4 +277,3 @@ export class FleetOrderList extends HTMLElement {
   }
 }
 
-customElements.define("fleet-order-list", FleetOrderList);
