@@ -1,4 +1,5 @@
 import { TopologyNode, VehicleSummary } from "../types/models";
+import { FleetBatterySettings } from "./fleet-battery-settings";
 
 export class FleetVehicleTable extends HTMLElement {
   private tableBodyEl: HTMLElement | null = null;
@@ -6,6 +7,7 @@ export class FleetVehicleTable extends HTMLElement {
   private nodeSelect: HTMLSelectElement | null = null;
   private sendBtn: HTMLButtonElement | null = null;
   private statusEl: HTMLElement | null = null;
+  private batterySettings: FleetBatterySettings | null = null;
 
   private vehicles: VehicleSummary[] = [];
   private nodes: TopologyNode[] = [];
@@ -21,6 +23,7 @@ export class FleetVehicleTable extends HTMLElement {
     this.nodeSelect = this.querySelector("#repoNode");
     this.sendBtn = this.querySelector("#repoSend");
     this.statusEl = this.querySelector("#repoStatus");
+    this.batterySettings = this.querySelector("fleet-battery-settings");
 
     this.sendBtn?.addEventListener("click", () => this.sendReposition());
   }
@@ -63,6 +66,8 @@ export class FleetVehicleTable extends HTMLElement {
         </div>
         <p id="repoStatus" class="repo-status"></p>
       </div>
+
+      <fleet-battery-settings></fleet-battery-settings>
     `;
   }
 
@@ -75,6 +80,10 @@ export class FleetVehicleTable extends HTMLElement {
   public updateNodes(nodes: TopologyNode[]): void {
     this.nodes = nodes;
     this.refreshNodeSelect();
+  }
+
+  public updateBatteryThreshold(threshold: number): void {
+    this.batterySettings?.updateThreshold(threshold);
   }
 
   private renderTable(): void {

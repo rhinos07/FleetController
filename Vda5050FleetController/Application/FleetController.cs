@@ -14,7 +14,12 @@ public class FleetController
     private readonly IFleetStatusPublisher    _statusPublisher;
     private readonly IFleetPersistenceService _persistence;
     private readonly VehicleDispatcher        _dispatcher;
+    private readonly BatteryChargingSettings  _batterySettings;
     private readonly ILogger<FleetController> _log;
+
+    // Tracks vehicles for which a charge-dispatch order has been sent but the vehicle
+    // has not yet started driving (avoids duplicate dispatches in rapid state bursts).
+    private readonly HashSet<string> _pendingChargeDispatches = [];
 
     public FleetController(
         VehicleRegistry           registry,
@@ -24,6 +29,7 @@ public class FleetController
         IFleetStatusPublisher?    statusPublisher,
         IFleetPersistenceService? persistence,
         VehicleDispatcher         dispatcher,
+        BatteryChargingSettings   batterySettings,
         ILogger<FleetController>  log)
     {
         _registry        = registry;
@@ -33,6 +39,7 @@ public class FleetController
         _statusPublisher = statusPublisher ?? NoOpFleetStatusPublisher.Instance;
         _persistence     = persistence    ?? NoOpFleetPersistenceService.Instance;
         _dispatcher      = dispatcher;
+        _batterySettings = batterySettings;
         _log             = log;
 
         _mqtt.OnStateReceived      += HandleVehicleStateAsync;
@@ -117,6 +124,13 @@ public class FleetController
 
         await _persistence.SaveVehicleAsync(vehicle);
 
+        // Once the vehicle starts driving or reaches a charging node, clear the pending dispatch flag.
+        if (vehicle.Status == VehicleStatus.Driving
+            || IsChargingNode(vehicle.LastNodeId))
+        {
+            _pendingChargeDispatches.Remove(vehicle.VehicleId);
+        }
+
         // Vehicle stopped mid-path with remaining nodes → likely blocked by an idle AGV
         if (!state.Driving
             && !string.IsNullOrEmpty(state.OrderId)
@@ -140,6 +154,8 @@ public class FleetController
             if (!wasDispatched)
                 await _dispatcher.TryUnblockVehiclesBlockedByAsync(vehicle, ct: default);
         }
+
+        await TryDispatchLowBatteryVehiclesAsync(ct: default);
 
         await PublishStatusAsync();
     }
@@ -245,12 +261,123 @@ public class FleetController
             LoadId    = o.LoadId,
             Status    = o.Status.ToString(),
             VehicleId = o.AssignedVehicleId
-        }).ToList()
+        }).ToList(),
+        LowBatteryThreshold = _batterySettings.LowBatteryThreshold
     };
+
+    public void UpdateBatteryThreshold(double threshold)
+    {
+        if (threshold < 0 || threshold > 100)
+            throw new ArgumentOutOfRangeException(nameof(threshold), "Threshold must be between 0 and 100.");
+        _batterySettings.LowBatteryThreshold = threshold;
+        _log.LogInformation("Battery low-threshold updated to {Threshold}%", threshold);
+    }
 
     private Task PublishStatusAsync(CancellationToken ct = default)
         => _statusPublisher.PublishAsync(GetStatus(), ct);
 
     public Task PublishStatusUpdateAsync(CancellationToken ct = default)
         => PublishStatusAsync(ct);
+
+    // ── Battery charging dispatch ─────────────────────────────────────────────
+
+    private static bool IsChargingNode(string? nodeId)
+        => nodeId != null && nodeId.StartsWith("CHG-", StringComparison.OrdinalIgnoreCase);
+
+    private async Task TryDispatchLowBatteryVehiclesAsync(CancellationToken ct)
+    {
+        var threshold = _batterySettings.LowBatteryThreshold;
+
+        var chargingNodeIds = _topology.GetAllNodes()
+            .Where(n => IsChargingNode(n.NodeId))
+            .Select(n => n.NodeId)
+            .ToHashSet();
+
+        if (chargingNodeIds.Count == 0)
+            return;
+
+        // Collect vehicles that need to go to a charging station.
+        var vehiclesNeedingCharge = _registry.All()
+            .Where(v => v.Status == VehicleStatus.Idle
+                        && v.Battery?.BatteryCharge < threshold
+                        && !IsChargingNode(v.LastNodeId)
+                        && !_pendingChargeDispatches.Contains(v.VehicleId))
+            .ToList();
+
+        if (vehiclesNeedingCharge.Count == 0)
+            return;
+
+        // Nodes currently occupied by any vehicle (for eviction target selection).
+        var vehiclesAtChargingNode = _registry.All()
+            .Where(v => IsChargingNode(v.LastNodeId))
+            .ToDictionary(v => v.LastNodeId!, v => v);
+
+        foreach (var vehicle in vehiclesNeedingCharge)
+        {
+            var fromNodeId = vehicle.LastNodeId;
+            if (fromNodeId is null)
+                continue;
+
+            var freeChargingNode = chargingNodeIds.FirstOrDefault(n => !vehiclesAtChargingNode.ContainsKey(n));
+
+            if (freeChargingNode != null)
+            {
+                _log.LogInformation(
+                    "Low-battery vehicle {VehicleId} ({Battery:F1}%) dispatched to free charging station {ChargingNodeId}",
+                    vehicle.VehicleId, vehicle.Battery?.BatteryCharge ?? 0, freeChargingNode);
+                _pendingChargeDispatches.Add(vehicle.VehicleId);
+                await _dispatcher.MoveToNodeAsync(vehicle, fromNodeId, freeChargingNode, ct);
+
+                // Mark this node as occupied so subsequent iterations don't double-book it.
+                vehiclesAtChargingNode[freeChargingNode] = vehicle;
+            }
+            else
+            {
+                // All charging nodes occupied — try to evict a fully-charged vehicle.
+                var evictCandidate = vehiclesAtChargingNode.Values
+                    .Where(v => v.Battery?.BatteryCharge >= Vehicle.FullBatteryThreshold
+                                && v.Status is VehicleStatus.Idle or VehicleStatus.Charging
+                                && !_pendingChargeDispatches.Contains(v.VehicleId))
+                    .OrderByDescending(v => v.Battery?.BatteryCharge ?? 0)
+                    .FirstOrDefault();
+
+                if (evictCandidate is null)
+                {
+                    _log.LogWarning(
+                        "Low-battery vehicle {VehicleId} ({Battery:F1}%) cannot be sent to charge: all stations occupied by non-evictable vehicles",
+                        vehicle.VehicleId, vehicle.Battery?.BatteryCharge ?? 0);
+                    continue;
+                }
+
+                var chargeNodeId = evictCandidate.LastNodeId!;
+                var allOccupied  = new HashSet<string>(_registry.All()
+                    .Where(v => v.LastNodeId != null)
+                    .Select(v => v.LastNodeId!));
+
+                var evictTarget = _topology.GetNeighborNodeIds(chargeNodeId)
+                    .FirstOrDefault(n => !chargingNodeIds.Contains(n) && !allOccupied.Contains(n));
+
+                if (evictTarget is null)
+                {
+                    _log.LogWarning(
+                        "Cannot evict fully-charged vehicle {EvictVehicleId} from {ChargingNodeId}: no free neighbours",
+                        evictCandidate.VehicleId, chargeNodeId);
+                    continue;
+                }
+
+                _log.LogInformation(
+                    "Evicting fully-charged vehicle {EvictVehicleId} ({Battery:F1}%) from {ChargingNodeId} → {EvictTarget} to make room for low-battery vehicle {LowBatteryVehicleId} ({LowBattery:F1}%)",
+                    evictCandidate.VehicleId, evictCandidate.Battery?.BatteryCharge ?? 0,
+                    chargeNodeId, evictTarget,
+                    vehicle.VehicleId, vehicle.Battery?.BatteryCharge ?? 0);
+
+                await _dispatcher.MoveToNodeAsync(evictCandidate, chargeNodeId, evictTarget, ct);
+                vehiclesAtChargingNode.Remove(chargeNodeId);
+
+                _pendingChargeDispatches.Add(vehicle.VehicleId);
+                await _dispatcher.MoveToNodeAsync(vehicle, fromNodeId, chargeNodeId, ct);
+                vehiclesAtChargingNode[chargeNodeId] = vehicle;
+            }
+        }
+    }
 }

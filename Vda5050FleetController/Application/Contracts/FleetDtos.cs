@@ -39,6 +39,12 @@ public record FleetStatus
     /// Summary of all active and pending orders.
     /// </summary>
     public List<OrderSummary> Orders { get; init; } = [];
+
+    /// <summary>
+    /// Battery charge percentage threshold below which vehicles are automatically
+    /// dispatched to a charging station.
+    /// </summary>
+    public double LowBatteryThreshold { get; init; }
 }
 
 /// <summary>

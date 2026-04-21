@@ -430,3 +430,55 @@ th {
 .repo-status.error {
   color: #ef4444;
 }
+
+/* ── Battery settings panel ──────────────────────────────────────── */
+.battery-settings-panel {
+  margin-top: 2rem;
+  padding: 1.25rem;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.battery-settings-panel h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.battery-settings-desc {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.battery-settings-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.battery-settings-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.battery-settings-controls input[type="number"] {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  width: 80px;
+}
+
+.battery-settings-status {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  min-height: 1.2em;
+}
+
+.battery-settings-status.ok    { color: #10b981; }
+.battery-settings-status.error { color: #ef4444; }

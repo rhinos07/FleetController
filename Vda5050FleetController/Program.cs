@@ -38,6 +38,7 @@ if (builder.Environment.IsEnvironment("UITests"))
 builder.Services.AddSingleton<VehicleRegistry>();
 builder.Services.AddSingleton<TransportOrderQueue>();
 builder.Services.AddSingleton<VehicleDispatcher>();
+builder.Services.AddSingleton<BatteryChargingSettings>();
 builder.Services.AddSingleton<FleetController>();
 builder.Services.AddSingleton<IFleetStatusPublisher, SignalRFleetStatusPublisher>();
 builder.Services.AddSingleton<TopologyMap>();
@@ -164,6 +165,31 @@ app.MapPost("/fleet/vehicles/move",
     .WithName("MoveVehicle")
     .WithSummary("Reposition a free vehicle to a target node");
 
+// ── Settings Endpoints ────────────────────────────────────────────────────────
+
+// GET /fleet/settings — read current runtime settings
+app.MapGet("/fleet/settings", (BatteryChargingSettings settings) =>
+    Results.Ok(new { lowBatteryThreshold = settings.LowBatteryThreshold }))
+    .WithName("GetSettings")
+    .WithSummary("Get current fleet runtime settings");
+
+// PUT /fleet/settings/battery-threshold — update low-battery threshold
+app.MapPut("/fleet/settings/battery-threshold",
+    (BatteryThresholdRequest req, FleetController fc) =>
+    {
+        try
+        {
+            fc.UpdateBatteryThreshold(req.Threshold);
+            return Results.Ok(new { lowBatteryThreshold = req.Threshold });
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            return Results.BadRequest(ex.Message);
+        }
+    })
+    .WithName("UpdateBatteryThreshold")
+    .WithSummary("Update the low-battery dispatch threshold (0–100 %)");
+
 app.MapHub<FleetStatusHub>("/hubs/fleet-status");
 
 // GET /fleet/orders — active and pending orders
@@ -253,6 +279,7 @@ app.Run();
 // ── Request DTOs ──────────────────────────────────────────────────────────────
 record TransportRequest(string SourceStationId, string DestStationId, string? LoadId);
 record MoveRequest(string VehicleId, string DestNodeId);
+record BatteryThresholdRequest(double Threshold);
 
 // ── Background Service: MQTT lifecycle ───────────────────────────────────────
 public class MqttBackgroundService : BackgroundService

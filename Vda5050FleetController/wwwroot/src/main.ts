@@ -7,6 +7,7 @@
 // Import all components
 import "./components/fleet-stats-cards";
 import "./components/fleet-connection-status";
+import "./components/fleet-battery-settings";
 import "./components/fleet-vehicle-table";
 import "./components/fleet-topology-graph";
 import "./components/fleet-topology-config";

@@ -68,6 +68,12 @@ public class Vehicle
     public const double MinimumBatteryForDispatch = 20.0;
 
     /// <summary>
+    /// Battery level at or above which a vehicle at a charging station is considered
+    /// fully charged and eligible for eviction to free up the spot.
+    /// </summary>
+    public const double FullBatteryThreshold = 80.0;
+
+    /// <summary>
     /// The remaining node IDs from the last state message where the vehicle was stopped mid-path
     /// (driving=false with at least one pending NodeState).  Null when the vehicle is driving
     /// normally or has no active order.  Used by the fleet controller to proactively re-send
@@ -156,6 +162,8 @@ public class Vehicle
             return VehicleStatus.Error;
         if (state.Driving)
             return VehicleStatus.Driving;
+        if (state.BatteryState?.Charging == true)
+            return VehicleStatus.Charging;
         if (!string.IsNullOrEmpty(state.OrderId))
             return VehicleStatus.Busy;
         return VehicleStatus.Idle;
