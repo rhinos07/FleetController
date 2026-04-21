@@ -21,7 +21,7 @@ COPY FleetController.Tests/     ./FleetController.Tests/
 
 # Build frontend (TypeScript/WebComponents)
 WORKDIR /src/Vda5050FleetController/wwwroot
-RUN npm install && npm run build
+RUN NODE_ENV=development npm ci && npm run build
 
 WORKDIR /src
 

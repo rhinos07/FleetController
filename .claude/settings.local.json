@@ -7,7 +7,9 @@
       "Bash(git mv *)",
       "PowerShell(Rename-Item *)",
       "Bash(git add *)",
-      "Bash(dotnet build *)"
+      "Bash(dotnet build *)",
+      "Bash(npm run *)",
+      "Bash(npm install *)"
     ]
   }
 }

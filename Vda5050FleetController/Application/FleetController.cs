@@ -294,20 +294,28 @@ public class FleetController
     private async Task TryResolveBlockersAsync(IReadOnlyList<string> pathNodeIds,
         Vehicle assignedVehicle, CancellationToken ct)
     {
-        // Build a lookup: nodeId → list of idle vehicles parked there
+        // Build a lookup: nodeId → list of stationary vehicles parked there that can be moved.
+        // Includes vehicles in Busy status whose last order has already completed (orderId no longer
+        // in the active queue) — they are physically present but their status hasn't reset to Idle yet.
         var idleAtNode = _registry.All()
             .Where(v => v.VehicleId != assignedVehicle.VehicleId
-                        && v.IsAvailable
-                        && v.LastNodeId is not null)
+                        && v.LastNodeId is not null
+                        && v.Status is not VehicleStatus.Driving
+                                    and not VehicleStatus.Offline
+                                    and not VehicleStatus.Error
+                        && (v.CurrentOrderId is null || _queue.FindActive(v.CurrentOrderId) is null))
             .GroupBy(v => v.LastNodeId!)
             .ToDictionary(g => g.Key, g => g.ToList());
 
         if (idleAtNode.Count == 0)
             return;
 
-        // Track which nodes are about to become occupied by dodging vehicles
-        // so we don't route two vehicles to the same spot.
+        // Nodes that must not be used as dodge targets:
+        // - nodes where idle vehicles already stand (they'll become the dodge origin)
+        // - nodes on the assigned vehicle's own path (source is held during pick; destination is the goal)
         var pendingOccupied = new HashSet<string>(idleAtNode.Keys);
+        foreach (var n in pathNodeIds)
+            pendingOccupied.Add(n);
 
         foreach (var nodeId in pathNodeIds)
         {
@@ -368,7 +376,12 @@ public class FleetController
         var vehicle = _registry.GetOrCreate(state.Manufacturer, state.SerialNumber);
         var wasIdle = vehicle.IsAvailable;
 
-        vehicle.ApplyState(state);
+        // AGVs keep reporting their last orderId even after a completed order.
+        // Strip it when it no longer refers to a known active order so the vehicle transitions to Idle.
+        var stateForVehicle = !string.IsNullOrEmpty(state.OrderId) && _queue.FindActive(state.OrderId) is null
+            ? state with { OrderId = string.Empty }
+            : state;
+        vehicle.ApplyState(stateForVehicle);
 
         // Log errors
         foreach (var err in state.Errors)
@@ -432,6 +445,21 @@ public class FleetController
 
     public Task StartChargingAsync(string vehicleId, CancellationToken ct = default)
         => SendInstantActionAsync(vehicleId, "startCharging", ct);
+
+    public async Task MoveVehicleAsync(string vehicleId, string destNodeId, CancellationToken ct = default)
+    {
+        var vehicle = _registry.Find(vehicleId)
+            ?? throw new InvalidOperationException($"Vehicle {vehicleId} not found");
+        if (!vehicle.IsAvailable)
+            throw new InvalidOperationException($"Vehicle {vehicleId} is not available for repositioning");
+        var fromNodeId = vehicle.LastNodeId
+            ?? throw new InvalidOperationException($"Vehicle {vehicleId} has no known position");
+        if (fromNodeId == destNodeId)
+            return;
+
+        await SendDodgeOrderAsync(vehicle, fromNodeId, destNodeId, ct);
+        _log.LogInformation("Manual reposition: vehicle {VehicleId} → {DestNodeId}", vehicleId, destNodeId);
+    }
 
     private async Task SendInstantActionAsync(string vehicleId, string actionType,
         CancellationToken ct)

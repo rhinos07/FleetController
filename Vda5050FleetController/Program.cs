@@ -126,6 +126,23 @@ app.MapPost("/fleet/vehicles/{vehicleId}/charge",
     })
     .WithName("StartCharging");
 
+// POST /fleet/vehicles/move
+app.MapPost("/fleet/vehicles/move",
+    async (MoveRequest req, FleetController fc, CancellationToken ct) =>
+    {
+        try
+        {
+            await fc.MoveVehicleAsync(req.VehicleId, req.DestNodeId, ct);
+            return Results.Accepted();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.BadRequest(ex.Message);
+        }
+    })
+    .WithName("MoveVehicle")
+    .WithSummary("Reposition a free vehicle to a target node");
+
 app.MapHub<FleetStatusHub>("/hubs/fleet-status");
 
 // GET /fleet/orders — active and pending orders
@@ -214,6 +231,7 @@ app.Run();
 
 // ── Request DTOs ──────────────────────────────────────────────────────────────
 record TransportRequest(string SourceStationId, string DestStationId, string? LoadId);
+record MoveRequest(string VehicleId, string DestNodeId);
 
 // ── Background Service: MQTT lifecycle ───────────────────────────────────────
 public class MqttBackgroundService : BackgroundService

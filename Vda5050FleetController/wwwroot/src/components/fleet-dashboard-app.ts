@@ -134,6 +134,7 @@ export class FleetDashboardApp extends HTMLElement {
 
     // Update vehicle table
     this.vehicleTable?.updateVehicles(status.vehicles);
+    this.vehicleTable?.updateNodes(status.nodes);
 
     // Update order list and history
     this.orderList?.updateOrders(status.orders);

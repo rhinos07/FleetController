@@ -308,6 +308,70 @@ public class FleetControllerTests
     }
 
     [Fact]
+    public async Task SimulatedState_VehicleBecomesIdle_WhenSubsequentStateStillCarriesCompletedOrderId()
+    {
+        // In VDA5050 AGVs keep reporting their last orderId forever; the fleet controller must
+        // strip it once the order is no longer in the active queue so the vehicle can become Idle.
+        var f = CreateFixture();
+        MakeVehicleAvailable(f.Registry);
+        await f.Controller.RequestTransportAsync("SRC", "DST");
+
+        var orderId = f.Mqtt.PublishedOrders.Single().OrderId;
+
+        // Completion state: nodeStates empty, not driving → order marked complete
+        await f.Mqtt.SimulateStateAsync(StateFor("Acme", "SN-001",
+            orderId: orderId,
+            nodeStates: [],
+            edgeStates: []));
+
+        // Next state from AGV still carries the old orderId (normal VDA5050 behaviour)
+        await f.Mqtt.SimulateStateAsync(StateFor("Acme", "SN-001",
+            orderId: orderId,
+            nodeStates: [],
+            edgeStates: []));
+
+        var vehicle = f.Registry.Find("Acme/SN-001");
+        Assert.Equal("Idle", vehicle!.Status.ToString());
+    }
+
+    [Fact]
+    public async Task SimulatedState_DispatchesPendingOrder_WhenVehicleFinishesAndReportsStaleOrderId()
+    {
+        // After order completion the vehicle should pick up a queued order on the next state update,
+        // even though the AGV still reports the completed orderId.
+        var f = CreateFixture();
+        MakeVehicleAvailable(f.Registry);
+
+        // First transport order → dispatched immediately
+        await f.Controller.RequestTransportAsync("SRC", "DST");
+        var firstOrderId = f.Mqtt.PublishedOrders.Single().OrderId;
+
+        // AGV confirms it is now driving → vehicle becomes non-available
+        await f.Mqtt.SimulateStateAsync(StateFor("Acme", "SN-001",
+            orderId: firstOrderId, driving: true));
+
+        // Second order queued while vehicle is busy
+        await f.Controller.RequestTransportAsync("SRC", "DST");
+        Assert.Equal(1, f.Queue.PendingCount);
+
+        // Completion state: nodeStates empty, not driving → first order marked complete
+        await f.Mqtt.SimulateStateAsync(StateFor("Acme", "SN-001",
+            orderId: firstOrderId,
+            nodeStates: [],
+            edgeStates: []));
+
+        // Next state still carries the stale orderId (normal VDA5050 behaviour)
+        // → fleet controller strips it → vehicle becomes Idle → second order dispatched
+        await f.Mqtt.SimulateStateAsync(StateFor("Acme", "SN-001",
+            orderId: firstOrderId,
+            nodeStates: [],
+            edgeStates: []));
+
+        Assert.Equal(2, f.Mqtt.PublishedOrders.Count); // first dispatch + second dispatch
+        Assert.Equal(0, f.Queue.PendingCount);
+    }
+
+    [Fact]
     public async Task SimulatedState_DispatchesPendingOrder_WhenVehicleBecomesIdle()
     {
         var f = CreateFixture();
@@ -532,6 +596,79 @@ public class FleetControllerTests
         });
 
         Assert.Equal("SRC", vehicle.LastNodeId);
+    }
+
+    [Fact]
+    public async Task DispatchOrder_DodgeTargetIsNotSourceNode_WhenSourceIsNeighbourOfBlockedDest()
+    {
+        // Regression: if SRC is a direct neighbour of DST and a blocker stands at DST,
+        // the dodge must NOT target SRC — the assigned vehicle holds SRC during pick,
+        // causing a simulator deadlock (each AGV waits for the node the other holds).
+        //
+        // Topology:  SRC ─── DST ─── SIDE
+        //                        ↑
+        //                    blocker here
+        var registry = new VehicleRegistry(NullLogger<VehicleRegistry>.Instance);
+        var queue    = new TransportOrderQueue(NullLogger<TransportOrderQueue>.Instance);
+        var topology = new TopologyMap();
+        topology.AddNode("SRC",  0.0, 0.0, 0.0, "MAP-1");
+        topology.AddNode("DST", 10.0, 0.0, 0.0, "MAP-1");
+        topology.AddNode("SIDE", 10.0, 5.0, 0.0, "MAP-1");
+        topology.AddEdge("E-SRC-DST",  "SRC",  "DST");
+        topology.AddEdge("E-DST-SIDE", "DST",  "SIDE");
+        var mqtt = new FakeMqttService();
+        var f    = new FC(registry, queue, topology, mqtt,
+            statusPublisher: null, persistence: null, NullLogger<FC>.Instance);
+
+        // SN-001 (dispatcher) starts at SRC; SN-002 (blocker) is at DST
+        MakeVehicleIdleAtNode(registry, "Acme", "SN-001", "SRC");
+        MakeVehicleIdleAtNode(registry, "Acme", "SN-002", "DST");
+
+        await f.RequestTransportAsync("SRC", "DST");
+
+        var dodge = mqtt.PublishedOrders.FirstOrDefault(o => o.OrderId.StartsWith("DODGE-"));
+        Assert.NotNull(dodge);
+        Assert.Equal("SN-002", dodge.SerialNumber);
+        // Dodge target must be SIDE, not SRC (SRC is held by the dispatched vehicle)
+        Assert.DoesNotContain(dodge.Nodes, n => n.NodeId == "SRC");
+        Assert.Contains(dodge.Nodes, n => n.NodeId == "SIDE");
+    }
+
+    [Fact]
+    public async Task DispatchOrder_SendsDodgeOrder_WhenBlockingVehicleIsStillBusyFromCompletedOrder()
+    {
+        // Regression: blocker detection must catch vehicles in Busy status whose order just
+        // completed (order no longer in active queue) — not only fully-Idle vehicles.
+        var f = CreateFixtureWithEdges();
+
+        // SN-001 is the dispatcher; SN-002 just finished an order at SRC (still Busy status)
+        MakeVehicleIdleAtNode(f.Registry, "Acme", "SN-001", "DST");
+
+        // Simulate SN-002 completing an order: it arrives at SRC with a completed orderId
+        // The fleet controller marks the order done but SN-002's status remains Busy
+        // until the next heartbeat clears the orderId.
+        var completedOrderId = "TO-completed-earlier";
+        var vehicle2 = f.Registry.GetOrCreate("Acme", "SN-002");
+        vehicle2.ApplyState(new VehicleState
+        {
+            Manufacturer = "Acme",
+            SerialNumber = "SN-002",
+            OrderId      = completedOrderId,   // stale orderId — not in active queue
+            LastNodeId   = "SRC",
+            Driving      = false,
+            BatteryState = new BatteryState { BatteryCharge = 80.0 },
+            Errors       = [],
+            NodeStates   = [],
+            EdgeStates   = []
+        });
+        // vehicle2.Status is now Busy (orderId set), but the order is NOT in the queue
+
+        // Dispatch a new order for SN-001: SRC → DST; SN-002 is blocking SRC
+        await f.Controller.RequestTransportAsync("SRC", "DST");
+
+        var dodge = f.Mqtt.PublishedOrders.FirstOrDefault(o => o.OrderId.StartsWith("DODGE-"));
+        Assert.NotNull(dodge);
+        Assert.Equal("SN-002", dodge.SerialNumber);
     }
 
     // ── Dynamic blocker resolution (mid-path) ─────────────────────────────────
