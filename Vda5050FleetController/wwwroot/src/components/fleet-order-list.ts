@@ -277,3 +277,5 @@ export class FleetOrderList extends HTMLElement {
   }
 }
 
+
+customElements.define("fleet-order-list", FleetOrderList);
