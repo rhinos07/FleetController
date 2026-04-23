@@ -61,6 +61,7 @@ export interface FleetStatus {
   nodes: TopologyNode[];
   edges: TopologyEdge[];
   orders: OrderSummary[];
+  lowBatteryThreshold: number;
 }
 
 // Enum types matching backend

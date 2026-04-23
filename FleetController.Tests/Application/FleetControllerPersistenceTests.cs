@@ -33,6 +33,7 @@ public class FleetControllerPersistenceTests
             statusPublisher: null,
             persistence,
             dispatcher,
+            new BatteryChargingSettings(),
             NullLogger<FC>.Instance);
 
         return new PersistenceFixture(controller, registry, queue, mqtt, persistence);

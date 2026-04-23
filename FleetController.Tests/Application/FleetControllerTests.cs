@@ -33,6 +33,7 @@ public class FleetControllerTests
             statusPublisher,
             persistence: null,
             dispatcher,
+            new BatteryChargingSettings(),
             NullLogger<FC>.Instance);
 
         return new Fixture(controller, registry, queue, mqtt, statusPublisher);
@@ -488,6 +489,7 @@ public class FleetControllerTests
             statusPublisher,
             persistence: null,
             dispatcher,
+            new BatteryChargingSettings(),
             NullLogger<FC>.Instance);
         return new Fixture(controller, registry, queue, mqtt, statusPublisher);
     }
@@ -634,7 +636,7 @@ public class FleetControllerTests
         var dispatcher = new VehicleDispatcher(registry, queue, topology, mqtt,
             NoOpFleetPersistenceService.Instance, NullLogger<VehicleDispatcher>.Instance);
         var f          = new FC(registry, queue, topology, mqtt,
-            statusPublisher: null, persistence: null, dispatcher, NullLogger<FC>.Instance);
+            statusPublisher: null, persistence: null, dispatcher, new BatteryChargingSettings(), NullLogger<FC>.Instance);
 
         // SN-001 (dispatcher) starts at SRC; SN-002 (blocker) is at DST
         MakeVehicleIdleAtNode(registry, "Acme", "SN-001", "SRC");
@@ -803,7 +805,7 @@ public class FleetControllerTests
         var dispatcher = new VehicleDispatcher(registry, queue, topology, mqtt,
             NoOpFleetPersistenceService.Instance, NullLogger<VehicleDispatcher>.Instance);
         var controller = new FC(registry, queue, topology, mqtt,
-            statusPublisher: null, persistence: null, dispatcher, NullLogger<FC>.Instance);
+            statusPublisher: null, persistence: null, dispatcher, new BatteryChargingSettings(), NullLogger<FC>.Instance);
 
         // SN-001 is driving — not yet at DST so it is NOT detected as a stationary blocker
         // at dispatch time.
